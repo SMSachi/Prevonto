@@ -64,8 +64,8 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: accessTokenKey)
         UserDefaults.standard.removeObject(forKey: refreshTokenKey)
         UserDefaults.standard.removeObject(forKey: tokenExpiryKey)
-        clearUserProfile()
-        print("🚪 Tokens cleared")
+        clearAllLocalData()
+        print("🚪 Logged out - tokens and local data cleared")
     }
 
     func getToken() -> String? {
@@ -103,6 +103,33 @@ class AuthManager: ObservableObject {
     func clearUserProfile() {
         UserDefaults.standard.removeObject(forKey: userNameKey)
         UserDefaults.standard.removeObject(forKey: userEmailKey)
+    }
+
+    /// Clear all local app data when switching accounts
+    func clearAllLocalData() {
+        // Clear profile
+        clearUserProfile()
+
+        // Clear medications
+        UserDefaults.standard.removeObject(forKey: "trackedMedications")
+
+        // Clear mood entries
+        UserDefaults.standard.removeObject(forKey: "moodEntries")
+
+        // Clear weight entries
+        UserDefaults.standard.removeObject(forKey: "weightEntries")
+
+        // Clear liquid log entries
+        UserDefaults.standard.removeObject(forKey: "liquidEntries")
+
+        // Clear notification settings
+        UserDefaults.standard.removeObject(forKey: "showHeartRate")
+        UserDefaults.standard.removeObject(forKey: "showStepsActivity")
+
+        // Clear onboarding data
+        UserDefaults.standard.removeObject(forKey: "onboardingData")
+
+        print("🧹 All local data cleared")
     }
 
     // MARK: - Token Refresh

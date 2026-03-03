@@ -138,6 +138,11 @@ struct ProfileView: View {
                     dateOfBirth: dobString
                 )
                 await MainActor.run {
+                    // Also save to local storage so Settings shows updated name
+                    AuthManager.shared.saveUserProfile(
+                        fullName: fullName.isEmpty ? nil : fullName,
+                        email: email.isEmpty ? nil : email
+                    )
                     isSaving = false
                     showingSaveAlert = true
                 }
