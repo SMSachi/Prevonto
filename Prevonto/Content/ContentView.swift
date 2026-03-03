@@ -854,9 +854,9 @@ struct ContentView: View {
                                     withAnimation(.spring(response: 0.3)) { isQuickLogExpanded = false }
                                 })
 
-                                // Analytics button
-                                NavigationLink(destination: AnalyticsView()) {
-                                    quickLogButton(icon: "chart.bar.fill", label: "Analytics", color: Color(red: 0.36, green: 0.55, blue: 0.37))
+                                // AI Health Insights button
+                                NavigationLink(destination: AIInsightsView()) {
+                                    quickLogButton(icon: "brain.head.profile", label: "AI Health", color: Color(red: 0.36, green: 0.55, blue: 0.37))
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 .simultaneousGesture(TapGesture().onEnded {

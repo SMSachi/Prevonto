@@ -6,6 +6,15 @@ import Charts
 struct WeightChartView: View {
     let data: [(String, Double)]
 
+    private var yAxisRange: ClosedRange<Double> {
+        let values = data.map { $0.1 }
+        guard let minVal = values.min(), let maxVal = values.max() else {
+            return 100...200
+        }
+        let padding = max((maxVal - minVal) * 0.2, 5) // At least 5 lbs padding
+        return (minVal - padding)...(maxVal + padding)
+    }
+
     var body: some View {
         Chart {
             ForEach(data, id: \.0) { day, value in
@@ -13,15 +22,31 @@ struct WeightChartView: View {
                     x: .value("Day", day),
                     y: .value("Weight", value)
                 )
-                .foregroundStyle(Color(red: 0.01, green: 0.33, blue: 0.18)) // Dark green line
+                .foregroundStyle(Color(red: 0.01, green: 0.33, blue: 0.18))
+                .interpolationMethod(.monotone)
+                .symbol(Circle())
+                .symbolSize(30)
+
+                AreaMark(
+                    x: .value("Day", day),
+                    y: .value("Weight", value)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(red: 0.01, green: 0.33, blue: 0.18).opacity(0.3), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .interpolationMethod(.monotone)
             }
         }
         .chartYAxis {
             AxisMarks(position: .leading)
         }
-        .chartYScale(domain: 100...120)
-        .frame(height: 150)
+        .chartYScale(domain: yAxisRange)
+        .frame(height: 180)
+        .padding()
         .background(Color.white)
         .cornerRadius(12)
         .shadow(radius: 1)
@@ -288,41 +313,76 @@ struct WeightTrackerView: View {
     }
 
     private var trendsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let trendInfo = calculateTrend()
+
+        return VStack(alignment: .leading, spacing: 8) {
             Text("Trends")
                 .font(.headline)
                 .foregroundColor(.black)
 
-            HStack {
-                Rectangle()
-                    .fill(Color(red: 0.39, green: 0.59, blue: 0.38))
-                    .frame(width: 20, height: 20)
-                Text("No significant change in weight today—great consistency!")
-                    .font(.footnote)
-            }
-            .padding()
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.3))
-            )
-
-            HStack {
-                Rectangle()
-                    .fill(Color.yellow)
-                    .frame(width: 20, height: 20)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("This BMI falls outside the typical range. Tracking your health over time can offer helpful insight.")
-                        .font(.footnote)
-                    Text("Learn more...")
-                        .font(.footnote)
+            if manager.entries.count < 2 {
+                HStack {
+                    Image(systemName: "info.circle.fill")
                         .foregroundColor(.blue)
+                        .frame(width: 20, height: 20)
+                    Text("Add more weight entries to see your trends over time.")
+                        .font(.footnote)
+                        .foregroundColor(.gray)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+            } else {
+                HStack {
+                    Image(systemName: trendInfo.icon)
+                        .foregroundColor(trendInfo.color)
+                        .frame(width: 20, height: 20)
+                    Text(trendInfo.message)
+                        .font(.footnote)
+                        .foregroundColor(.primary)
+                }
+                .padding()
+                .background(trendInfo.color.opacity(0.1))
+                .cornerRadius(12)
+
+                if let change = trendInfo.weeklyChange {
+                    HStack {
+                        Image(systemName: change >= 0 ? "arrow.up.right" : "arrow.down.right")
+                            .foregroundColor(change >= 0 ? .orange : .green)
+                            .frame(width: 20, height: 20)
+                        Text("Weekly change: \(change >= 0 ? "+" : "")\(String(format: "%.1f", change)) \(selectedUnit.lowercased())")
+                            .font(.footnote)
+                            .foregroundColor(.primary)
+                    }
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
                 }
             }
-            .padding()
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.3))
-            )
+        }
+    }
+
+    private func calculateTrend() -> (message: String, icon: String, color: Color, weeklyChange: Double?) {
+        guard manager.entries.count >= 2 else {
+            return ("Not enough data", "chart.line.uptrend.xyaxis", .gray, nil)
+        }
+
+        let sortedEntries = manager.entries.sorted { $0.date > $1.date }
+        let latest = sortedEntries[0].weightLb
+        let previous = sortedEntries[1].weightLb
+        let change = latest - previous
+
+        // Weekly change calculation
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        let weekOldEntry = sortedEntries.first { $0.date <= weekAgo }
+        let weeklyChange: Double? = weekOldEntry.map { latest - $0.weightLb }
+
+        if abs(change) < 0.5 {
+            return ("Weight stable — great consistency!", "checkmark.circle.fill", Color(red: 0.36, green: 0.55, blue: 0.37), weeklyChange)
+        } else if change > 0 {
+            return ("Weight increased by \(String(format: "%.1f", change)) lbs since last entry", "arrow.up.circle.fill", .orange, weeklyChange)
+        } else {
+            return ("Weight decreased by \(String(format: "%.1f", abs(change))) lbs since last entry", "arrow.down.circle.fill", .green, weeklyChange)
         }
     }
 

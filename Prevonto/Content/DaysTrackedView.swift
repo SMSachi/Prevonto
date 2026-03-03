@@ -2,152 +2,303 @@
 import SwiftUI
 
 struct DaysTrackedView: View {
+    @Environment(\.dismiss) var dismiss
+
     private enum Period: String, CaseIterable {
         case week = "Week"
         case month = "Month"
     }
 
     @State private var selectedPeriod: Period = .month
-    @State private var selectedDate = Date()
-    
-    // Sample tracked days (for the calendar)
-    private let trackedDays: Set<Int> = [12, 15, 16, 17, 18, 19, 24, 25]
-    private let today = 27
+    @State private var currentMonth = Date()
+    @State private var trackedDates: Set<Date> = []
+    @State private var totalDaysTracked: Int = 0
+    @State private var mostTrackedMetrics: String = "Loading..."
+    @State private var isLoading = true
+
+    private let calendar = Calendar.current
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                // Title
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Days tracked\ncounter")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.proPrimary)
-                    Text("Keep a tab on how frequently you track your metrics on the app.")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 12)
-                
-                // Main Box
-                VStack(spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("9")
-                            .font(.system(size: 48, weight: .bold))
-                            .foregroundColor(.proPrimary)
-                        Text("days")
-                            .font(.title2)
-                            .foregroundColor(.gray)
-                    }
-                    Text("Most tracked: BP, Mood")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(color: .gray.opacity(0.1), radius: 6)
-                .padding(.horizontal, 24)
+            ZStack {
+                Color(UIColor.systemGroupedBackground).ignoresSafeArea()
 
-                // Period Picker
-                HStack(spacing: 12) {
-                    ForEach(Period.allCases, id: \.self) { period in
-                        Button {
-                            selectedPeriod = period
-                        } label: {
-                            Text(period.rawValue)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(selectedPeriod == period ? .white : .gray)
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 20)
-                                .background(selectedPeriod == period ? Color.proPrimary : Color.white)
-                                .cornerRadius(8)
-                                .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+                VStack(spacing: 0) {
+                    // Header
+                    headerSection
+
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Title
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Days Tracked")
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                Text("Track how consistently you log your health metrics.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+
+                            // Stats Box
+                            VStack(spacing: 8) {
+                                if isLoading {
+                                    ProgressView()
+                                        .padding()
+                                } else {
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text("\(totalDaysTracked)")
+                                            .font(.system(size: 48, weight: .bold))
+                                            .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                        Text("days")
+                                            .font(.title2)
+                                            .foregroundColor(.gray)
+                                    }
+                                    Text(mostTrackedMetrics)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .shadow(color: .gray.opacity(0.1), radius: 6)
+                            .padding(.horizontal, 16)
+
+                            // Period Picker
+                            HStack(spacing: 12) {
+                                ForEach(Period.allCases, id: \.self) { period in
+                                    Button {
+                                        selectedPeriod = period
+                                    } label: {
+                                        Text(period.rawValue)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(selectedPeriod == period ? .white : .gray)
+                                            .padding(.vertical, 8)
+                                            .padding(.horizontal, 24)
+                                            .background(selectedPeriod == period ? Color(red: 0.01, green: 0.33, blue: 0.18) : Color.white)
+                                            .cornerRadius(8)
+                                            .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+
+                            // Calendar
+                            calendarView
+                                .padding(.horizontal, 16)
+
+                            Spacer(minLength: 50)
                         }
+                        .padding(.top, 16)
                     }
                 }
-                .padding(.horizontal, 24)
-
-                // Calendar
-                calendarView
-                
-                Spacer(minLength: 50)
             }
-            .background(Color(UIColor.systemGroupedBackground))
+            .navigationBarHidden(true)
+            .onAppear { loadTrackedDays() }
+            .onChange(of: currentMonth) { _, _ in loadTrackedDays() }
         }
     }
 
-    // Calendar Mockup
+    // MARK: - Header
+    var headerSection: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Calendar View
     private var calendarView: some View {
         VStack(spacing: 12) {
-            // Header
+            // Month Navigation
             HStack {
-                Image(systemName: "chevron.left").foregroundColor(.gray)
+                Button(action: { moveMonth(by: -1) }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+                }
                 Spacer()
-                Text("May 2025")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                Text(monthYearString)
+                    .font(.headline)
+                    .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
                 Spacer()
-                Image(systemName: "chevron.right").foregroundColor(.gray)
+                Button(action: { moveMonth(by: 1) }) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+                }
             }
-            .padding(.horizontal, 24)
-            
-            // Grid
-            VStack(spacing: 10) {
-                let columns = ["Su", "M", "T", "W", "Th", "F", "Sa"]
-                HStack {
-                    ForEach(columns, id: \.self) {
-                        Text($0)
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                
-                let allDays = (1...31)
-                let weeks = stride(from: 0, to: allDays.count, by: 7).map {
-                    Array(allDays.dropFirst($0).prefix(7))
-                }
+            .padding(.horizontal, 8)
 
-                ForEach(weeks, id: \.self) { week in
-                    HStack {
-                        ForEach(week, id: \.self) { day in
-                            ZStack {
-                                if trackedDays.contains(day) {
-                                    Circle()
-                                        .fill(Color.proPrimary)
-                                        .frame(width: 32, height: 32)
-                                } else if day == today {
-                                    Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 32, height: 32)
-                                }
-                                
-                                Text("\(day)")
-                                    .font(.subheadline)
-                                    .foregroundColor(trackedDays.contains(day) || day == today ? .white : .primary)
+            // Weekday Headers
+            let weekdays = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+            HStack {
+                ForEach(weekdays, id: \.self) { day in
+                    Text(day)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            // Calendar Days Grid
+            let days = generateCalendarDays()
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                ForEach(days, id: \.self) { day in
+                    if let day = day {
+                        let isTracked = isDateTracked(day)
+                        let isToday = calendar.isDateInToday(day)
+
+                        ZStack {
+                            if isTracked {
+                                Circle()
+                                    .fill(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                    .frame(width: 36, height: 36)
+                            } else if isToday {
+                                Circle()
+                                    .stroke(Color(red: 0.01, green: 0.33, blue: 0.18), lineWidth: 2)
+                                    .frame(width: 36, height: 36)
                             }
-                            .frame(maxWidth: .infinity)
+
+                            Text("\(calendar.component(.day, from: day))")
+                                .font(.subheadline)
+                                .fontWeight(isToday ? .bold : .regular)
+                                .foregroundColor(isTracked ? .white : (isToday ? Color(red: 0.01, green: 0.33, blue: 0.18) : .primary))
                         }
+                        .frame(height: 40)
+                    } else {
+                        Text("")
+                            .frame(height: 40)
                     }
                 }
             }
-            .padding(.horizontal, 12)
         }
         .padding()
         .background(Color.white)
         .cornerRadius(12)
         .shadow(color: .gray.opacity(0.1), radius: 4)
-        .padding(.horizontal, 24)
     }
-}
 
-// MARK: - Color Extension
-private extension Color {
-    static let proPrimary = Color(red: 0.01, green: 0.33, blue: 0.18)
+    // MARK: - Helpers
+
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: currentMonth)
+    }
+
+    private func moveMonth(by value: Int) {
+        if let newMonth = calendar.date(byAdding: .month, value: value, to: currentMonth) {
+            currentMonth = newMonth
+        }
+    }
+
+    private func generateCalendarDays() -> [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: currentMonth),
+              let firstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start) else {
+            return []
+        }
+
+        var days: [Date?] = []
+        let firstDayOfMonth = monthInterval.start
+        let lastDayOfMonth = calendar.date(byAdding: .day, value: -1, to: monthInterval.end)!
+
+        // Get the weekday of the first day (0 = Sunday)
+        let firstWeekday = calendar.component(.weekday, from: firstDayOfMonth) - 1
+
+        // Add empty cells for days before the month starts
+        for _ in 0..<firstWeekday {
+            days.append(nil)
+        }
+
+        // Add all days in the month
+        var currentDay = firstDayOfMonth
+        while currentDay <= lastDayOfMonth {
+            days.append(currentDay)
+            currentDay = calendar.date(byAdding: .day, value: 1, to: currentDay)!
+        }
+
+        return days
+    }
+
+    private func isDateTracked(_ date: Date) -> Bool {
+        trackedDates.contains { calendar.isDate($0, inSameDayAs: date) }
+    }
+
+    // MARK: - Load Data
+
+    private func loadTrackedDays() {
+        isLoading = true
+
+        Task {
+            do {
+                // Get date range for current month
+                guard let monthInterval = calendar.dateInterval(of: .month, for: currentMonth) else {
+                    return
+                }
+
+                // Fetch metrics for the month
+                let metrics = try await HealthMetricsAPI.shared.getMetricHistory(
+                    type: "energy_mood",
+                    range: .month,
+                    limit: 100
+                )
+
+                // Also check weight and other metrics
+                let weightMetrics = try await HealthMetricsAPI.shared.getMetricHistory(
+                    type: "weight",
+                    range: .month,
+                    limit: 100
+                )
+
+                await MainActor.run {
+                    var dates: Set<Date> = []
+
+                    for metric in metrics {
+                        if let date = metric.date {
+                            dates.insert(calendar.startOfDay(for: date))
+                        }
+                    }
+
+                    for metric in weightMetrics {
+                        if let date = metric.date {
+                            dates.insert(calendar.startOfDay(for: date))
+                        }
+                    }
+
+                    trackedDates = dates
+                    totalDaysTracked = dates.count
+
+                    if !metrics.isEmpty || !weightMetrics.isEmpty {
+                        var trackedTypes: [String] = []
+                        if !metrics.isEmpty { trackedTypes.append("Mood") }
+                        if !weightMetrics.isEmpty { trackedTypes.append("Weight") }
+                        mostTrackedMetrics = "Most tracked: \(trackedTypes.joined(separator: ", "))"
+                    } else {
+                        mostTrackedMetrics = "Start tracking to see your progress"
+                    }
+
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    trackedDates = []
+                    totalDaysTracked = 0
+                    mostTrackedMetrics = "Connect to see tracked days"
+                    isLoading = false
+                }
+            }
+        }
+    }
 }
 
 struct DaysTrackedView_Previews: PreviewProvider {

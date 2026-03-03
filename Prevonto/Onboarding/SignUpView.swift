@@ -207,6 +207,10 @@ struct SignUpView: View {
         Task {
             do {
                 print("📤 Registering user: \(email)")
+
+                // Clear any existing local data for fresh start
+                AuthManager.shared.clearAllLocalData()
+
                 try await AuthManager.shared.register(
                     email: email,
                     password: password,
@@ -223,10 +227,12 @@ struct SignUpView: View {
                 await MainActor.run {
                     isLoading = false
                     if case .httpError(let code, let body) = error {
-                        if code == 400 && body.contains("already") {
-                            errorMessage = "Email already registered. Try logging in."
+                        if code == 400 && (body.contains("already") || body.contains("registered")) {
+                            errorMessage = "Email already registered. Please log in instead."
+                        } else if code == 400 && body.contains("password") {
+                            errorMessage = "Password must be at least 8 characters."
                         } else if code == 400 {
-                            errorMessage = "Invalid input. Check email format and password (8+ chars)."
+                            errorMessage = "Invalid input. Check email and password (8+ chars)."
                         } else {
                             errorMessage = "Registration failed. Please try again."
                         }
