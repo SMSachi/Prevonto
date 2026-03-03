@@ -15,6 +15,8 @@ struct DaysTrackedView: View {
     @State private var totalDaysTracked: Int = 0
     @State private var mostTrackedMetrics: String = "Loading..."
     @State private var isLoading = true
+    @State private var todayTrackedItems: [String] = []
+    @State private var trackedToday = false
 
     private let calendar = Calendar.current
 
@@ -41,6 +43,53 @@ struct DaysTrackedView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
 
+                            // Today's Activity Box
+                            if !isLoading {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Image(systemName: trackedToday ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(trackedToday ? Color(red: 0.36, green: 0.55, blue: 0.37) : .gray)
+                                        Text("Today")
+                                            .font(.headline)
+                                            .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                        Spacer()
+                                        if trackedToday {
+                                            Text("Tracked!")
+                                                .font(.caption)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color(red: 0.36, green: 0.55, blue: 0.37).opacity(0.1))
+                                                .cornerRadius(8)
+                                        }
+                                    }
+
+                                    if trackedToday && !todayTrackedItems.isEmpty {
+                                        HStack(spacing: 8) {
+                                            ForEach(todayTrackedItems, id: \.self) { item in
+                                                Text(item)
+                                                    .font(.caption)
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 6)
+                                                    .background(Color(red: 0.01, green: 0.33, blue: 0.18).opacity(0.1))
+                                                    .cornerRadius(6)
+                                            }
+                                        }
+                                    } else if !trackedToday {
+                                        Text("No metrics logged today yet")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .shadow(color: .gray.opacity(0.1), radius: 6)
+                                .padding(.horizontal, 16)
+                            }
+
                             // Stats Box
                             VStack(spacing: 8) {
                                 if isLoading {
@@ -51,8 +100,8 @@ struct DaysTrackedView: View {
                                         Text("\(totalDaysTracked)")
                                             .font(.system(size: 48, weight: .bold))
                                             .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
-                                        Text("days")
-                                            .font(.title2)
+                                        Text("days this month")
+                                            .font(.subheadline)
                                             .foregroundColor(.gray)
                                     }
                                     Text(mostTrackedMetrics)
@@ -262,21 +311,37 @@ struct DaysTrackedView: View {
 
                 await MainActor.run {
                     var dates: Set<Date> = []
+                    var todayItems: [String] = []
+                    let today = calendar.startOfDay(for: Date())
 
                     for metric in metrics {
                         if let date = metric.date {
-                            dates.insert(calendar.startOfDay(for: date))
+                            let dayStart = calendar.startOfDay(for: date)
+                            dates.insert(dayStart)
+                            if calendar.isDate(dayStart, inSameDayAs: today) {
+                                if !todayItems.contains("Mood") {
+                                    todayItems.append("Mood")
+                                }
+                            }
                         }
                     }
 
                     for metric in weightMetrics {
                         if let date = metric.date {
-                            dates.insert(calendar.startOfDay(for: date))
+                            let dayStart = calendar.startOfDay(for: date)
+                            dates.insert(dayStart)
+                            if calendar.isDate(dayStart, inSameDayAs: today) {
+                                if !todayItems.contains("Weight") {
+                                    todayItems.append("Weight")
+                                }
+                            }
                         }
                     }
 
                     trackedDates = dates
                     totalDaysTracked = dates.count
+                    todayTrackedItems = todayItems
+                    trackedToday = dates.contains { calendar.isDate($0, inSameDayAs: today) }
 
                     if !metrics.isEmpty || !weightMetrics.isEmpty {
                         var trackedTypes: [String] = []

@@ -67,10 +67,16 @@ struct SpO2View: View {
     // MARK: - Title and Tab Picker
     var tabPicker: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("SpO2")
-                .font(.custom("Noto Sans", size: 32))
-                .fontWeight(.bold)
-                .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SpO2")
+                    .font(.custom("Noto Sans", size: 32))
+                    .fontWeight(.bold)
+                    .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+
+                Text(hasData ? "Data synced from your wearable device" : "Connect a wearable device to track SpO2")
+                    .font(.custom("Noto Sans", size: 14))
+                    .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+            }
 
             HStack(spacing: 0) {
                 ForEach(SpO2TimeTab.allCases, id: \.self) { tab in

@@ -28,7 +28,7 @@ struct AIInsightsView: View {
                 
                 if isLoading {
                     Spacer()
-                    ProgressView("Loading AI insights...")
+                    ProgressView("Loading insights...")
                     Spacer()
                 } else if let error = errorMessage {
                     Spacer()
@@ -61,7 +61,7 @@ struct AIInsightsView: View {
                     }
                 }
             }
-            .navigationTitle("AI Health Insights")
+            .navigationTitle("Health Insights")
             .onAppear { loadData() }
             .refreshable { loadData() }
         }
@@ -91,9 +91,9 @@ struct AIInsightsView: View {
                     if error.localizedDescription.contains("404") {
                         errorMessage = "No data available yet. Track some metrics first!"
                     } else {
-                        errorMessage = "Failed to load AI insights"
+                        errorMessage = "Failed to load insights"
                     }
-                    print("❌ AI insights error: \(error)")
+                    print("❌ Insights error: \(error)")
                 }
             }
         }
@@ -143,7 +143,7 @@ struct DailySummaryView: View {
                         Text(summary.summary_text)
                             .foregroundColor(.gray)
                     } else {
-                        Text("Start tracking your health metrics to get personalized AI insights. Log your mood, weight, and connect your wearables to see trends and recommendations.")
+                        Text("Start tracking your health metrics to see personalized insights. Log your mood, weight, and connect your wearables to see trends and recommendations.")
                             .foregroundColor(.gray)
                     }
                 }

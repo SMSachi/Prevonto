@@ -60,6 +60,8 @@ struct SignUpView: View {
                     .foregroundColor(.gray)
                 
                 SecureField("Password", text: $password)
+                    .textContentType(.oneTimeCode) // Prevents password autofill suggestions
+                    .autocorrectionDisabled()
                     .padding(.horizontal)
                     .frame(height: 44)
                     .background(Color.white)
@@ -69,6 +71,8 @@ struct SignUpView: View {
                 // Only show Confirm Password for new users
                 if isNewUser {
                     SecureField("Confirm Password", text: $confirmPassword)
+                        .textContentType(.oneTimeCode) // Prevents password autofill suggestions
+                        .autocorrectionDisabled()
                         .padding(.horizontal)
                         .frame(height: 44)
                         .background(Color.white)

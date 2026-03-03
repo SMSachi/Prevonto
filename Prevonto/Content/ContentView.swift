@@ -854,9 +854,9 @@ struct ContentView: View {
                                     withAnimation(.spring(response: 0.3)) { isQuickLogExpanded = false }
                                 })
 
-                                // AI Health Insights button
+                                // Health Insights button
                                 NavigationLink(destination: AIInsightsView()) {
-                                    quickLogButton(icon: "brain.head.profile", label: "AI Health", color: Color(red: 0.36, green: 0.55, blue: 0.37))
+                                    quickLogButton(icon: "chart.line.uptrend.xyaxis", label: "Insights", color: Color(red: 0.36, green: 0.55, blue: 0.37))
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 .simultaneousGesture(TapGesture().onEnded {
@@ -1107,29 +1107,32 @@ struct ContentView: View {
         isLoadingAnalytics = true
 
         Task {
+            let timeRange = selectedTimePeriod.toTimeRange
+
+            // Load heart rate data
             do {
-                let timeRange = selectedTimePeriod.toTimeRange
-
-                // Load heart rate and activity data in parallel
-                async let heartRateData = AnalyticsAPI.shared.getTimeSeries(metricType: "heart_rate", range: timeRange)
-                async let activityStats = AnalyticsAPI.shared.getStatistics(metricType: "steps_activity", range: timeRange)
-
-                let (heartRateResponse, activityResponse) = try await (heartRateData, activityStats)
-
+                let heartRateResponse = try await AnalyticsAPI.shared.getTimeSeries(metricType: "heart_rate", range: timeRange)
                 await MainActor.run {
-                    // Update heart rate chart data
                     heartRateChartData = normalizeHeartRateData(response: heartRateResponse)
-
-                    // Update activity ring progress from statistics
-                    updateActivityProgress(from: activityResponse)
-
-                    isLoadingAnalytics = false
                 }
             } catch {
+                // Heart rate data not available - keep defaults
+                print("⚠️ Heart rate data not available")
+            }
+
+            // Load activity stats (may 404 if no data)
+            do {
+                let activityResponse = try await AnalyticsAPI.shared.getStatistics(metricType: "steps_activity", range: timeRange)
                 await MainActor.run {
-                    isLoadingAnalytics = false
-                    // Keep existing/default values on error
+                    updateActivityProgress(from: activityResponse)
                 }
+            } catch {
+                // Activity data not available - keep default progress values
+                print("⚠️ Activity stats not available - connect wearable to track")
+            }
+
+            await MainActor.run {
+                isLoadingAnalytics = false
             }
         }
     }
