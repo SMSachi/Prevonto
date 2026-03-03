@@ -4,17 +4,21 @@ import SwiftUI
 struct DevicesView: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var isSearching = false
-    
-    // Mock paired devices (When successfully implement paired devices tracking, replace this section of code)
-    @State private var pairedDevices = [
-        Device(name: "Your Name's Apple Watch", type: .appleWatch, isConnected: true)
-    ]
-    
-    // Mock nearby devices (When successfully implement nearby devices tracking, replace this section of code)
-    @State private var nearbyDevices = [
-        Device(name: "User's Apple Watch", type: .appleWatch, isConnected: false),
-        Device(name: "Speaker", type: .other, isConnected: false)
-    ]
+    @State private var isHealthKitAuthorized = false
+    @State private var hasHealthData = false
+
+    let healthKitManager = HealthKitManager()
+
+    // Paired devices - will show Apple Health connection if authorized
+    var pairedDevices: [Device] {
+        if isHealthKitAuthorized {
+            return [Device(name: "Apple Health", type: .appleHealth, isConnected: hasHealthData)]
+        }
+        return []
+    }
+
+    // No nearby devices shown - connection is via Health app
+    @State private var nearbyDevices: [Device] = []
     
     var body: some View {
         NavigationStack {
@@ -28,18 +32,13 @@ struct DevicesView: View {
                     // Devices Content
                     ScrollView {
                         VStack(spacing: 24) {
-                            if isSearching {
-                                searchProgressView
-                            } else {
-                                pairNewDeviceButton
+                            pairNewDeviceButton
+
+                            // Connected Devices Section
+                            if !pairedDevices.isEmpty {
+                                historySection
                             }
-                            
-                            // History Section
-                            historySection
-                            
-                            // Nearby Devices Section
-                            nearbyDevicesSection
-                            
+
                             Spacer(minLength: 30)
                         }
                         .padding(.horizontal, 16)
@@ -47,6 +46,25 @@ struct DevicesView: View {
                     }
                 }
                 .navigationBarHidden(true)
+                .onAppear {
+                    checkHealthKitStatus()
+                }
+            }
+        }
+    }
+
+    private func checkHealthKitStatus() {
+        healthKitManager.requestAuthorization { success, error in
+            DispatchQueue.main.async {
+                self.isHealthKitAuthorized = success
+                if success {
+                    // Check if we actually have health data
+                    self.healthKitManager.fetchTodayStepCount { steps, _ in
+                        DispatchQueue.main.async {
+                            self.hasHealthData = (steps ?? 0) > 0
+                        }
+                    }
+                }
             }
         }
     }
@@ -88,91 +106,75 @@ struct DevicesView: View {
         }
     }
     
-    // Pair New Device Button
+    // Connect to Health App Button
     var pairNewDeviceButton: some View {
-        Button(action: {
-            // If Pair New Device button is clicked on, it is supposed to look for nearby devices to pair with the app. Front end works, but currently doesn't recognize any nearby devices yet.
-            startSearch()
-        }) {
-            HStack(spacing: 16) {
-                Spacer()
-                Text("Pair New Device")
-                    .font(.custom("Noto Sans", size: 20))
-                    .fontWeight(.semibold)
-                    .foregroundColor(Color.white)
-                Spacer()
-            }
-            .padding(20)
-            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    // Search Progress View
-    @State private var searchProgress: Double = 0.0
-    @State private var progressTimer: Timer?
+        VStack(spacing: 16) {
+            if !isHealthKitAuthorized {
+                Button(action: {
+                    connectToHealthApp()
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                        Text("Connect to Apple Health")
+                            .font(.custom("Noto Sans", size: 20))
+                            .fontWeight(.semibold)
+                            .foregroundColor(Color.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(20)
+                    .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                    .cornerRadius(16)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                }
+                .buttonStyle(PlainButtonStyle())
 
-    var searchProgressView: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .stroke(Color(red: 0.36, green: 0.55, blue: 0.37).opacity(0.25), lineWidth: 40)
-                    .frame(width: 200, height: 200)
-
-                Circle()
-                    .trim(from: 0, to: searchProgress)
-                    .stroke(Color(red: 0.36, green: 0.55, blue: 0.37), style: StrokeStyle(lineWidth: 40, lineCap: .round))
-                    .frame(width: 200, height: 200)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.1), value: searchProgress)
-            }
-            .padding(.bottom, 12)
-
-            VStack(spacing: 8) {
-                Text("Searching for Devices...")
-                    .font(.custom("Noto Sans", size: 18))
-                    .fontWeight(.bold)
-                    .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
-
-                Text("Make sure your device is ready to connect")
+                Text("Connect Prevonto to Apple Health to sync data from your wearables like Apple Watch, Fitbit, and other health devices.")
                     .font(.custom("Noto Sans", size: 14))
-                    .fontWeight(.semibold)
                     .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                    Text("Connected to Apple Health")
+                        .font(.custom("Noto Sans", size: 18))
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(20)
+                .background(Color(red: 0.36, green: 0.55, blue: 0.37).opacity(0.1))
+                .cornerRadius(16)
+
+                Text("Your health data from Apple Watch and other devices is syncing automatically through Apple Health.")
+                    .font(.custom("Noto Sans", size: 14))
+                    .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
-        }
-        .onAppear { startSearchAnimation() }
-        .onDisappear { stopSearchAnimation() }
-    }
-    
-    private func startSearch() {
-        isSearching = true
-        searchProgress = 0.0
-        startSearchAnimation()
-        // Simulate 8-second search
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            stopSearchAnimation()
-            isSearching = false
         }
     }
 
-    private func startSearchAnimation() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            let increment = 0.0125
-            if searchProgress < 1.0 {
-                searchProgress += increment
+    private func connectToHealthApp() {
+        healthKitManager.requestAuthorization { success, error in
+            DispatchQueue.main.async {
+                self.isHealthKitAuthorized = success
+                if success {
+                    self.healthKitManager.fetchTodayStepCount { steps, _ in
+                        DispatchQueue.main.async {
+                            self.hasHealthData = (steps ?? 0) > 0
+                        }
+                    }
+                }
             }
         }
     }
-
-    private func stopSearchAnimation() {
-        progressTimer?.invalidate()
-        progressTimer = nil
-    }
     
-    // History Section
+    // Connected Devices Section
     var historySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("History")
@@ -183,28 +185,6 @@ struct DevicesView: View {
             
             VStack(spacing: 12) {
                 ForEach(pairedDevices) { device in
-                    DeviceRowView(device: device)
-                }
-            }
-            .padding(16)
-            .background(Color.white)
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-        }
-    }
-    
-    
-    // Nearby Devices Section
-    var nearbyDevicesSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Nearby Devices")
-                .font(.custom("Noto Sans", size: 18))
-                .fontWeight(.semibold)
-                .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            VStack(spacing: 12) {
-                ForEach(nearbyDevices) { device in
                     DeviceRowView(device: device)
                 }
             }
@@ -262,6 +242,8 @@ struct Device: Identifiable {
         switch type {
         case .appleWatch:
             return "applewatch"
+        case .appleHealth:
+            return "heart.fill"
         case .other:
             return "speaker.wave.2.fill"
         }
@@ -270,6 +252,7 @@ struct Device: Identifiable {
 
 enum DeviceType {
     case appleWatch
+    case appleHealth
     case other
 }
 

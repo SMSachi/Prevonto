@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FitnessLevelSelectionView: View {
     @State private var selectedLevel: Int? = nil
+    @State private var isSaving = false
 
     let next: () -> Void
     let back: () -> Void
@@ -12,13 +13,14 @@ struct FitnessLevelSelectionView: View {
         let id: Int
         let title: String
         let subtitle: String?
+        let apiValue: String
     }
 
     let fitnessOptions: [FitnessOption] = [
-        .init(id: 1, title: "Just started", subtitle: nil),
-        .init(id: 2, title: "Getting back into fitness", subtitle: nil),
-        .init(id: 3, title: "Fairly active", subtitle: nil),
-        .init(id: 4, title: "Very active", subtitle: nil)
+        .init(id: 1, title: "Just started", subtitle: nil, apiValue: "beginner"),
+        .init(id: 2, title: "Getting back into fitness", subtitle: nil, apiValue: "returning"),
+        .init(id: 3, title: "Fairly active", subtitle: nil, apiValue: "intermediate"),
+        .init(id: 4, title: "Very active", subtitle: nil, apiValue: "advanced")
     ]
 
     var body: some View {
@@ -71,16 +73,46 @@ struct FitnessLevelSelectionView: View {
                 Spacer()
 
                 Button {
-                    if selectedLevel != nil {
-                        next()
-                    }
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
+                }
+                .disabled(selectedLevel == nil || isSaving)
+            }
+        }
+    }
+
+    private func saveAndContinue() {
+        guard let level = selectedLevel,
+              let option = fitnessOptions.first(where: { $0.id == level }) else { return }
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveFitnessLevel(option.apiValue)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save fitness level: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
                 }
             }
         }

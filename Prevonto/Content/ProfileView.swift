@@ -9,8 +9,12 @@ struct ProfileView: View {
     @State private var mobileNumber: String = ""
     @State private var dateOfBirth = Date()
     @State private var showingSaveAlert = false
-    
     @State private var showingDatePicker = false
+
+    // Loading and error states
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
     
     var body: some View {
         NavigationStack {
@@ -22,24 +26,32 @@ struct ProfileView: View {
                     headerSection
                     
                     // Profile Content
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            // Profile Photo Section
-                            profilePhotoSection
-                            
-                            // Basic Details Section
-                            basicDetailsSection
-                            
-                            // Contact Details Section
-                            contactDetailsSection
-                            
-                            // Save Button
-                            saveButton
-                            
-                            Spacer(minLength: 30)
+                    ZStack {
+                        ScrollView {
+                            VStack(spacing: 24) {
+                                // Profile Photo Section
+                                profilePhotoSection
+
+                                // Basic Details Section
+                                basicDetailsSection
+
+                                // Contact Details Section
+                                contactDetailsSection
+
+                                // Save Button
+                                saveButton
+
+                                Spacer(minLength: 30)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 24)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 24)
+
+                        if isLoading {
+                            Color.white.opacity(0.7)
+                            ProgressView("Loading profile...")
+                                .progressViewStyle(CircularProgressViewStyle())
+                        }
                     }
                 }
                 .navigationBarHidden(true)
@@ -60,12 +72,80 @@ struct ProfileView: View {
                 )
                 .datePickerStyle(GraphicalDatePickerStyle())
                 .padding()
-                
+
                 Button("Done") {
                     showingDatePicker = false
                 }
                 .font(.custom("Noto Sans", size: 16))
                 .padding()
+            }
+        }
+        .onAppear {
+            loadProfile()
+        }
+    }
+
+    // MARK: - API Functions
+    private func loadProfile() {
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let profile = try await SettingsAPI.shared.getProfile()
+                await MainActor.run {
+                    if let name = profile.full_name {
+                        fullName = name
+                    }
+                    if let emailAddress = profile.email {
+                        email = emailAddress
+                    }
+                    if let phone = profile.phone_number {
+                        mobileNumber = phone
+                    }
+                    if let dobString = profile.date_of_birth {
+                        let formatter = ISO8601DateFormatter()
+                        formatter.formatOptions = [.withFullDate]
+                        if let date = formatter.date(from: dobString) {
+                            dateOfBirth = date
+                        }
+                    }
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    // Keep default values on error
+                }
+            }
+        }
+    }
+
+    private func saveProfile() {
+        isSaving = true
+        errorMessage = nil
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        let dobString = formatter.string(from: dateOfBirth)
+
+        Task {
+            do {
+                try await SettingsAPI.shared.updateProfile(
+                    fullName: fullName.isEmpty ? nil : fullName,
+                    email: email.isEmpty ? nil : email,
+                    phoneNumber: mobileNumber.isEmpty ? nil : mobileNumber,
+                    dateOfBirth: dobString
+                )
+                await MainActor.run {
+                    isSaving = false
+                    showingSaveAlert = true
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = "Failed to save profile"
+                }
             }
         }
     }
@@ -209,20 +289,36 @@ struct ProfileView: View {
     
     // MARK: - Save Button
     var saveButton: some View {
-        Button(action: {
-            showingSaveAlert = true
-        }) {
-            Text("Save")
-                .font(.custom("Noto Sans", size: 16))
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
+        VStack(spacing: 8) {
+            if let error = errorMessage {
+                Text(error)
+                    .font(.custom("Noto Sans", size: 14))
+                    .foregroundColor(.red)
+            }
+
+            Button(action: {
+                saveProfile()
+            }) {
+                HStack {
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                    }
+                    Text(isSaving ? "Saving..." : "Save")
+                        .font(.custom("Noto Sans", size: 16))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                }
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
                 .background(Color(red: 0.02, green: 0.33, blue: 0.18))
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.25), radius: 4, x: 0, y: 2)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(isSaving)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - Date Formatter

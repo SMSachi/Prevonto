@@ -3,6 +3,7 @@ import SwiftUI
 
 struct OnboardingFlowView: View {
     @State private var step = 0
+    @State private var isCompletingOnboarding = false
 
     var body: some View {
         VStack {
@@ -33,10 +34,21 @@ struct OnboardingFlowView: View {
                 MedicationSelectionView(next: { step = 8 }, back: { step = 6 }, step: step)
             case 8:
                 // 9th onboarding page prompts user for any and all allergies they have
-                SymptomsAllergyInputView(next: { step = 9 }, back: { step = 7 }, step: step)
-
+                SymptomsAllergyInputView(next: { completeOnboardingAndContinue() }, back: { step = 7 }, step: step)
+            case 9:
+                // Show loading while marking onboarding complete
+                if isCompletingOnboarding {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Setting up your profile...")
+                            .foregroundColor(.gray)
+                    }
+                } else {
+                    // After the user goes through the 9 onboarding pages, they will arrive at the Dashboard
+                    ContentView()
+                }
             default:
-                // After the user goes through the 9 onbaoarding page, they will arrive at the Dashboard page, which is primarily handled by ContentView.swift file.
                 ContentView()
             }
         }
@@ -52,6 +64,24 @@ struct OnboardingFlowView: View {
             }
         }
         .preferredColorScheme(.light)
+    }
+
+    private func completeOnboardingAndContinue() {
+        step = 9
+        isCompletingOnboarding = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.completeOnboarding()
+                print("✅ Onboarding marked as complete")
+            } catch {
+                print("❌ Failed to mark onboarding complete: \(error)")
+            }
+
+            await MainActor.run {
+                isCompletingOnboarding = false
+            }
+        }
     }
 }
 

@@ -5,7 +5,28 @@ import SwiftUI
 // Shared state manager for notification settings
 class NotificationSettings: ObservableObject {
     @Published var pushNotifications: Bool = true {
-        didSet { UserDefaults.standard.set(pushNotifications, forKey: "pushNotifications") }
+        didSet {
+            UserDefaults.standard.set(pushNotifications, forKey: "pushNotifications")
+            saveToAPI()
+        }
+    }
+    @Published var emailNotifications: Bool = true {
+        didSet {
+            UserDefaults.standard.set(emailNotifications, forKey: "emailNotifications")
+            saveToAPI()
+        }
+    }
+    @Published var dailySummary: Bool = true {
+        didSet {
+            UserDefaults.standard.set(dailySummary, forKey: "dailySummary")
+            saveToAPI()
+        }
+    }
+    @Published var anomalyAlerts: Bool = true {
+        didSet {
+            UserDefaults.standard.set(anomalyAlerts, forKey: "anomalyAlerts")
+            saveToAPI()
+        }
     }
     @Published var heartRate: Bool = true {
         didSet { UserDefaults.standard.set(heartRate, forKey: "showHeartRate") }
@@ -13,7 +34,10 @@ class NotificationSettings: ObservableObject {
     @Published var stepsAndActivity: Bool = true {
         didSet { UserDefaults.standard.set(stepsAndActivity, forKey: "showStepsActivity") }
     }
-    
+
+    // Loading state
+    @Published var isLoading: Bool = false
+
     // Read-only toggles (grayed out)
     let bodyMetrics: Bool = false
     let bloodGlucose: Bool = false
@@ -22,12 +46,65 @@ class NotificationSettings: ObservableObject {
     let weight: Bool = false
     let trackers: Bool = false
     let medication: Bool = false
-    
+
+    private var isSaving = false
+
     init() {
-        // Load saved settings
+        // Load saved settings from UserDefaults first
         pushNotifications = UserDefaults.standard.object(forKey: "pushNotifications") as? Bool ?? true
+        emailNotifications = UserDefaults.standard.object(forKey: "emailNotifications") as? Bool ?? true
+        dailySummary = UserDefaults.standard.object(forKey: "dailySummary") as? Bool ?? true
+        anomalyAlerts = UserDefaults.standard.object(forKey: "anomalyAlerts") as? Bool ?? true
         heartRate = UserDefaults.standard.object(forKey: "showHeartRate") as? Bool ?? true
         stepsAndActivity = UserDefaults.standard.object(forKey: "showStepsActivity") as? Bool ?? true
+    }
+
+    func loadFromAPI() {
+        isLoading = true
+        Task {
+            do {
+                let settings = try await SettingsAPI.shared.getNotificationSettings()
+                await MainActor.run {
+                    // Temporarily disable saving while updating from API
+                    isSaving = true
+                    if let push = settings.push_notifications_enabled {
+                        pushNotifications = push
+                    }
+                    if let email = settings.email_notifications_enabled {
+                        emailNotifications = email
+                    }
+                    if let daily = settings.daily_summary_enabled {
+                        dailySummary = daily
+                    }
+                    if let anomaly = settings.anomaly_alerts_enabled {
+                        anomalyAlerts = anomaly
+                    }
+                    isSaving = false
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    private func saveToAPI() {
+        guard !isSaving else { return }
+
+        Task {
+            do {
+                try await SettingsAPI.shared.updateNotifications(
+                    email: emailNotifications,
+                    push: pushNotifications,
+                    dailySummary: dailySummary,
+                    anomalyAlerts: anomalyAlerts
+                )
+            } catch {
+                print("Failed to save notification settings: \(error)")
+            }
+        }
     }
 }
 
@@ -64,6 +141,9 @@ struct NotificationsView: View {
                 }
                 .navigationBarHidden(true)
             }
+        }
+        .onAppear {
+            settings.loadFromAPI()
         }
     }
     
@@ -106,16 +186,54 @@ struct NotificationsView: View {
     // MARK: - Push Notifications Section
     var pushNotificationsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("Notification Preferences")
+                .font(.custom("Noto Sans", size: 18))
+                .fontWeight(.semibold)
+                .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             VStack(spacing: 0) {
                 NotificationToggleRow(
                     title: "Push Notifications",
                     isOn: $settings.pushNotifications,
                     isEnabled: true
                 )
+
+                Divider().padding(.leading, 16)
+
+                NotificationToggleRow(
+                    title: "Email Notifications",
+                    isOn: $settings.emailNotifications,
+                    isEnabled: true
+                )
+
+                Divider().padding(.leading, 16)
+
+                NotificationToggleRow(
+                    title: "Daily Summary",
+                    isOn: $settings.dailySummary,
+                    isEnabled: true
+                )
+
+                Divider().padding(.leading, 16)
+
+                NotificationToggleRow(
+                    title: "Anomaly Alerts",
+                    isOn: $settings.anomalyAlerts,
+                    isEnabled: true
+                )
             }
             .background(Color.white)
             .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .overlay(
+                Group {
+                    if settings.isLoading {
+                        Color.white.opacity(0.7)
+                        ProgressView()
+                    }
+                }
+            )
         }
     }
     

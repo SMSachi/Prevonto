@@ -1,313 +1,385 @@
-// Heart Rate page displays user's heart rate by day, week, or month.
+// Heart Rate page displays user's heart rate from wearable sync
 import SwiftUI
 import Charts
 
-// Properties of Heart Rate data recorded from users
-struct HeartRateRecord {
-    let timestamp: Date
-    let heartRate: Int
-}
-
-// Properties defined for Date
-extension Date {
-    static func from(year: Int, month: Int, day: Int, hour: Int = 0, minute: Int = 0, second: Int = 0) -> Date {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        components.hour = hour
-        components.minute = minute
-        components.second = second
-        return Calendar.current.date(from: components)!
-    }
-}
-
-// Specify whether user selects "Day", "Week", or "Month" view mode
-enum HeartRateChartMode: String, CaseIterable, Identifiable {
-    case day, week, month
-    var id: String { rawValue }
-}
-
 struct HeartRateView: View {
-    // Default view mode selected is Day Mode
-    @State private var selectedMode: HeartRateChartMode = .day
-    // Specify what date the user selected
-    @State private var selectedDate: Date = Date()
-    // Help identify which bar from chart is selecting
-    @State private var selectedBarIndex: Int? = nil
-    
-    // Sample Heart Rate data
-    private let allHeartRateRecords: [HeartRateRecord] = [
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 7, day: 31, hour: 9, minute: 15), heartRate: 90),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 7, day: 31, hour: 3, minute: 45), heartRate: 99),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 1, hour: 12, minute: 5), heartRate: 88),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 1, hour: 14, minute: 12), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 2, hour: 16, minute: 24), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 3, hour: 16, minute: 24), heartRate: 82),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 4, hour: 16, minute: 24), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 5, hour: 16, minute: 03), heartRate: 80),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 7, hour: 16, minute: 14), heartRate: 67),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 16, minute: 22), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 8, minute: 40), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 9, minute: 10), heartRate: 68),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 9, minute: 30), heartRate: 72),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 10, minute: 35), heartRate: 70),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 10, minute: 50), heartRate: 72),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 11, minute: 10), heartRate: 70),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 11, minute: 30), heartRate: 65),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 11, minute: 45), heartRate: 66),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 12, minute: 5), heartRate: 68),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 13, minute: 15), heartRate: 80),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 14, minute: 34), heartRate: 74),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 15, minute: 26), heartRate: 72),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 8, hour: 16, minute: 7), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 8, minute: 40), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 9, minute: 10), heartRate: 80),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 9, minute: 30), heartRate: 82),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 10, minute: 35), heartRate: 84),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 10, minute: 50), heartRate: 85),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 11, minute: 10), heartRate: 82),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 11, minute: 30), heartRate: 83),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 11, minute: 45), heartRate: 84),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 12, minute: 5), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 13, minute: 15), heartRate: 77),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 14, minute: 34), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 15, minute: 26), heartRate: 78),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 9, hour: 16, minute: 7), heartRate: 79),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 9, minute: 13), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 9, minute: 15), heartRate: 83),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 10, minute: 24), heartRate: 85),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 12, minute: 10), heartRate: 90),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 12, minute: 25), heartRate: 92),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 12, minute: 40), heartRate: 94),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 13, minute: 10), heartRate: 88),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 13, minute: 23), heartRate: 86),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 13, minute: 44), heartRate: 84),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 14, minute: 24), heartRate: 77),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 14, minute: 40), heartRate: 70),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 14, minute: 50), heartRate: 66),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 15, minute: 05), heartRate: 70),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 15, minute: 28), heartRate: 76),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 15, minute: 40), heartRate: 72),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 16, minute: 10), heartRate: 74),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 16, minute: 35), heartRate: 75),
-        HeartRateRecord(timestamp: Date.from(year: 2025, month: 8, day: 10, hour: 17, minute: 1), heartRate: 80),
-    ]
-    
-    // Sample data gets processed into suitable chart data to be displayed in the Chart for current selected view mode.
-    private var chartData: [(index: Int, label: String, min: Int?, max: Int?)] {
-        aggregateHeartRate(for: allHeartRateRecords, mode: selectedMode, selectedDate: selectedDate)
-            .enumerated()
-            .map { (idx, item) in (index: idx, label: item.label, min: item.min, max: item.max) }
-    }
-    
+    @Environment(\.dismiss) var dismiss
+
+    // View state
+    @State private var selectedTab: HeartRateTimeTab = .week
+    @State private var selectedDate = Date()
+    @State private var isLoading = false
+
+    // Data from HealthKit/API
+    @State private var currentBPM: Int = 0
+    @State private var avgBPM: Int = 0
+    @State private var minBPM: Int = 0
+    @State private var maxBPM: Int = 0
+    @State private var restingBPM: Int = 0
+    @State private var timelineData: [HeartRateDataPoint] = []
+    @State private var hasData = false
+
+    let healthKitManager = HealthKitManager()
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack {
-                    // Headline
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Heart Rate")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primaryGreen)
-                        
-                        Text("Your heart rate is monitored through your watch when in sync with the app.")
-                            .font(.subheadline)
-                            .foregroundColor(.grayText)
-                    }
-                    .padding(.vertical, 15)
-                    
-                    // View Mode Picker
-                    HStack(spacing:20){
-                        ForEach(HeartRateChartMode.allCases) { mode in
-                            Button(action: {
-                                selectedMode = mode
-                            }){
-                                Text(mode.rawValue.capitalized)
-                                    .font(.headline)
-                                    .foregroundStyle(selectedMode == mode ? .white : .primary)
-                                    .padding(.vertical, 6)
-                                    .padding(.horizontal, 34)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(selectedMode == mode ? Color.secondaryGreen : Color(.white))
-                                    )
-                                    .shadow(color: .gray.opacity(0.3), radius: 3, x: 0, y: 2)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.bottom, 10)
-                    .frame(width: 370)
-                    
-                    // Chart Area
-                    VStack {
+            ZStack {
+                Color.white.ignoresSafeArea()
 
-                        // Chart Title
-                        Text("Beats Per Minute (BPM) over time")
-                                .foregroundColor(.grayText)
-                                .font(.headline)
-                        
-                        // Heart Rate Chart
-                        Chart {
-                            ForEach(chartData.indices, id: \.self) { idx in
-                                let data = chartData[idx]
-                                if let min = data.min, let max = data.max {
-                                    BarMark(
-                                        x: .value("Index", data.index),
-                                        yStart: .value("Min", min),
-                                        yEnd: .value("Max", max)
-                                    )
-                                    .foregroundStyle(.green.opacity(0.6))
-                                    if min == max {
-                                        PointMark(
-                                            x: .value("Index", data.index),
-                                            y: .value("Measurement", min)
-                                        )
-                                        .foregroundStyle(.green)
-                                        .symbolSize(60)
-                                    }
-                                }
-                            }
+                VStack(spacing: 0) {
+                    headerSection
+
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            titleSection
+                            tabPicker
+                            calendarWeekPicker
+                            currentBPMSection
+                            statsSection
+                            chartSection
+                            Spacer(minLength: 50)
                         }
-                        .frame(height: 300)
-                        .chartXAxis {
-                            AxisMarks(values: chartData.map { $0.index }) { value in
-                                if let idx = value.as(Int.self), idx >= 0, idx < chartData.count && idx % 4 == 0 {
-                                    AxisValueLabel {
-                                        Text(chartData[idx].label).offset(x: -10)
-                                    }
-                                    AxisGridLine()
-                                }
-                            }
-                        }
-                        .chartYAxis {
-                            AxisMarks(position: .leading)
-                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                     }
                 }
-                .padding(.horizontal, 15)
+            }
+            .navigationBarHidden(true)
+            .onAppear { loadData() }
+            .onChange(of: selectedDate) { _, _ in loadData() }
+            .onChange(of: selectedTab) { _, _ in loadData() }
+        }
+    }
+
+    // MARK: - Header
+    var headerSection: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Title Section
+    var titleSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Heart Rate")
+                .font(.custom("Noto Sans", size: 28))
+                .fontWeight(.bold)
+                .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+
+            Text("Data synced from your wearable device")
+                .font(.custom("Noto Sans", size: 14))
+                .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Tab Picker
+    var tabPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(HeartRateTimeTab.allCases, id: \.self) { tab in
+                Button(action: { selectedTab = tab }) {
+                    Text(tab.rawValue)
+                        .font(.custom("Noto Sans", size: 14))
+                        .fontWeight(.medium)
+                        .foregroundColor(selectedTab == tab ? .white : Color(red: 0.40, green: 0.42, blue: 0.46))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(selectedTab == tab ? Color(red: 0.01, green: 0.33, blue: 0.18) : Color.clear)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedTab == tab ? Color.clear : Color(red: 0.85, green: 0.85, blue: 0.85), lineWidth: 1)
+                        )
+                }
+            }
+        }
+    }
+
+    // MARK: - Calendar Week Picker
+    var calendarWeekPicker: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Button(action: { moveWeek(by: -1) }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+                }
+
+                Spacer()
+
+                Text(monthYearString)
+                    .font(.custom("Noto Sans", size: 16))
+                    .fontWeight(.medium)
+                    .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+
+                Spacer()
+
+                Button(action: { moveWeek(by: 1) }) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(weekDays, id: \.date) { day in
+                    VStack(spacing: 4) {
+                        Text(day.dayName)
+                            .font(.custom("Noto Sans", size: 12))
+                            .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+
+                        Text("\(day.dayNumber)")
+                            .font(.custom("Noto Sans", size: 14))
+                            .fontWeight(day.isSelected ? .bold : .medium)
+                            .foregroundColor(day.isSelected ? .white : Color(red: 0.40, green: 0.42, blue: 0.46))
+                            .frame(width: 36, height: 36)
+                            .background(day.isSelected ? Color(red: 0.01, green: 0.33, blue: 0.18) : Color.clear)
+                            .cornerRadius(8)
+                    }
+                    .onTapGesture {
+                        selectedDate = day.date
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Current BPM Section
+    var currentBPMSection: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.red)
+
+                if hasData {
+                    Text("\(currentBPM)")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(Color(red: 0.40, green: 0.42, blue: 0.46))
+
+                    Text("BPM")
+                        .font(.custom("Noto Sans", size: 18))
+                        .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+                } else {
+                    Text("--")
+                        .font(.system(size: 48, weight: .bold))
+                        .foregroundColor(Color(red: 0.70, green: 0.70, blue: 0.70))
+
+                    Text("BPM")
+                        .font(.custom("Noto Sans", size: 18))
+                        .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+                }
+            }
+
+            Text(hasData ? "Current heart rate" : "Connect wearable to see data")
+                .font(.custom("Noto Sans", size: 14))
+                .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(Color(red: 0.96, green: 0.97, blue: 0.98))
+        .cornerRadius(16)
+    }
+
+    // MARK: - Stats Section
+    var statsSection: some View {
+        HStack(spacing: 12) {
+            HeartRateStatCard(title: "Avg", value: hasData ? "\(avgBPM)" : "--", unit: "BPM", color: .blue)
+            HeartRateStatCard(title: "Min", value: hasData ? "\(minBPM)" : "--", unit: "BPM", color: .green)
+            HeartRateStatCard(title: "Max", value: hasData ? "\(maxBPM)" : "--", unit: "BPM", color: .orange)
+            HeartRateStatCard(title: "Resting", value: hasData ? "\(restingBPM)" : "--", unit: "BPM", color: .purple)
+        }
+    }
+
+    // MARK: - Chart Section
+    var chartSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Heart Rate Timeline")
+                .font(.custom("Noto Sans", size: 18))
+                .fontWeight(.semibold)
+                .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+
+            if timelineData.isEmpty && !isLoading {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.slash")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color(red: 0.70, green: 0.70, blue: 0.70))
+                    Text("No heart rate data available")
+                        .font(.custom("Noto Sans", size: 14))
+                        .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+                    Text("Connect your wearable to sync data")
+                        .font(.custom("Noto Sans", size: 12))
+                        .foregroundColor(Color(red: 0.70, green: 0.70, blue: 0.70))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 180)
+                .background(Color(red: 0.96, green: 0.97, blue: 0.98))
+                .cornerRadius(12)
+            } else {
+                Chart {
+                    ForEach(timelineData) { point in
+                        LineMark(
+                            x: .value("Time", point.time),
+                            y: .value("BPM", point.value)
+                        )
+                        .foregroundStyle(Color.red)
+                        .interpolationMethod(.catmullRom)
+
+                        AreaMark(
+                            x: .value("Time", point.time),
+                            y: .value("BPM", point.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color.red.opacity(0.3), Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+                    }
+                }
+                .frame(height: 180)
+                .chartYScale(domain: 40...160)
+                .chartXAxis {
+                    AxisMarks(values: .automatic) { _ in
+                        AxisGridLine()
+                        AxisValueLabel()
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading)
+                }
+            }
+        }
+    }
+
+    // MARK: - Computed Properties
+
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: selectedDate)
+    }
+
+    private var weekDays: [WeekDay] {
+        let calendar = Calendar.current
+        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: selectedDate))!
+
+        return (0..<7).map { offset in
+            let date = calendar.date(byAdding: .day, value: offset, to: startOfWeek)!
+            let dayFormatter = DateFormatter()
+            dayFormatter.dateFormat = "EEE"
+            let dayName = dayFormatter.string(from: date)
+            let dayNumber = calendar.component(.day, from: date)
+            let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+
+            return WeekDay(date: date, dayName: dayName, dayNumber: dayNumber, isSelected: isSelected)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func moveWeek(by weeks: Int) {
+        if let newDate = Calendar.current.date(byAdding: .weekOfYear, value: weeks, to: selectedDate) {
+            selectedDate = newDate
+        }
+    }
+
+    private func loadData() {
+        isLoading = true
+
+        // Load from HealthKit
+        healthKitManager.fetchTodayHeartRate { hr, _ in
+            DispatchQueue.main.async {
+                if let hr = hr {
+                    self.currentBPM = Int(hr)
+                    self.hasData = true
+                }
+            }
+        }
+
+        // Load from API
+        Task {
+            do {
+                let range: TimeRange = selectedTab == .day ? .day : selectedTab == .week ? .week : .month
+                let history = try await HealthMetricsAPI.shared.getMetricHistory(type: "heart_rate", range: range)
+                let stats = try await AnalyticsAPI.shared.getStatistics(metricType: "heart_rate", range: range)
+
+                await MainActor.run {
+                    if !history.isEmpty {
+                        hasData = true
+                        avgBPM = Int(stats.average["value"] ?? 0)
+                        minBPM = Int(stats.minimum["value"] ?? 0)
+                        maxBPM = Int(stats.maximum["value"] ?? 0)
+                        restingBPM = Int(stats.average["value"] ?? 0) - 10 // Approximate resting
+
+                        timelineData = history.compactMap { record in
+                            guard let value = record.value["value"], let date = record.date else { return nil }
+                            return HeartRateDataPoint(time: date, value: value)
+                        }
+                    }
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                }
             }
         }
     }
 }
 
-// Colors used for the Heart Rate page
-private extension Color {
-    static let primaryGreen = Color(red: 0.01, green: 0.33, blue: 0.18)
-    static let secondaryGreen = Color(red: 0.39, green: 0.59, blue: 0.38)
-    static let grayText = Color(red: 0.25, green: 0.33, blue: 0.44)
+// MARK: - Supporting Types
+
+enum HeartRateTimeTab: String, CaseIterable {
+    case day = "Day"
+    case week = "Week"
+    case month = "Month"
 }
 
+struct HeartRateDataPoint: Identifiable {
+    let id = UUID()
+    let time: Date
+    let value: Double
+}
 
-// MARK: - Data Aggregation with complete axis
-func aggregateHeartRate(for records: [HeartRateRecord],
-                        mode: HeartRateChartMode,
-                        selectedDate: Date) -> [(label: String, min: Int?, max: Int?)] {
-    let calendar = Calendar.current
-    let now = Date()
-    let todayStart = calendar.startOfDay(for: now)
-    
-    switch mode {
-    case .day:
-        let startOfDay = calendar.startOfDay(for: selectedDate)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
-        let filtered = records.filter { $0.timestamp >= startOfDay && $0.timestamp < endOfDay && $0.timestamp <= now }
-        let grouped = groupByHour(records: filtered)
-        
-        // Debugging Day Mode
-        for (hour, group) in grouped.sorted(by: { $0.key < $1.key }) {
-            let hrValues = group.map(\.heartRate)
-            print("Hour \(hour):", hrValues)
-        }
-        
-        return (0..<24).map { hour in
-            let label = String(format: "%02d:00", hour)
-            // For current day, avoid future hours
-            if calendar.isDate(selectedDate, inSameDayAs: now),
-               hour > calendar.component(.hour, from: now) {
-                return (label, nil as Int?, nil as Int?)
-            }
-            if let data = grouped[hour], !data.isEmpty {
-                return (label, data.map(\.heartRate).min(), data.map(\.heartRate).max())
-            } else {
-                return (label, nil as Int?, nil as Int?)
-            }
-        }
-        
-    case .week:
-        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: selectedDate) else { return [] }
-        let filtered = records.filter { weekInterval.contains($0.timestamp) && $0.timestamp <= now }
-        let grouped = groupByWeekday(records: filtered)
-        let weekdaySymbols = calendar.weekdaySymbols
-        
-        // Debug Week Mode
-        for (weekday, group) in grouped.sorted(by: { $0.key < $1.key }) {
-            let hrValues = group.map(\.heartRate)
-            let name = weekdaySymbols[weekday - 1]
-            print("\(name):", hrValues)
-        }
+struct HeartRateStatCard: View {
+    let title: String
+    let value: String
+    let unit: String
+    let color: Color
 
-        // Always show all 7 days
-        // .date(bySetting: .weekday...) expects Sunday-based index (1...7)
-        return (1...7).map { weekday in
-            let label = weekdaySymbols[weekday - 1]
-            
-            // For current week, avoid future days
-            if weekInterval.contains(todayStart),
-                let dayDate = calendar.nextDate(after: weekInterval.start, matching: DateComponents(weekday: weekday), matchingPolicy: .nextTime, direction: .forward),
-                dayDate > now {
-                    return (label, nil as Int?, nil as Int?)
-            }
-            if let data = grouped[weekday], !data.isEmpty {
-                return (label, data.map(\.heartRate).min(), data.map(\.heartRate).max())
-            } else {
-                return (label, nil as Int?, nil as Int?)
-            }
-        }
-        
-    case .month:
-        guard let monthInterval = calendar.dateInterval(of: .month, for: selectedDate),
-              let dayRange = calendar.range(of: .day, in: .month, for: selectedDate)
-        else { return [] }
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.custom("Noto Sans", size: 12))
+                .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
 
-        let filtered = records.filter { monthInterval.contains($0.timestamp) && $0.timestamp <= now }
-        let grouped = groupByDayOfMonth(records: filtered)
-        
-        for (day, group) in grouped.sorted(by: { $0.key < $1.key }) {
-            let hrValues = group.map(\.heartRate)
-            print("Day \(day):", hrValues)
-        }
+            Text(value)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(color)
 
-        return dayRange.map { day in
-            let label = "\(day)"
-            // For current month, avoid future days
-            if calendar.isDate(selectedDate, equalTo: now, toGranularity: .month) &&
-                day > calendar.component(.day, from: now) {
-                return (label, nil as Int?, nil as Int?)
-            }
-            if let data = grouped[day], !data.isEmpty {
-                return (label, data.map(\.heartRate).min(), data.map(\.heartRate).max())
-            } else {
-                return (label, nil as Int?, nil as Int?)
-            }
+            Text(unit)
+                .font(.custom("Noto Sans", size: 10))
+                .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color(red: 0.96, green: 0.97, blue: 0.98))
+        .cornerRadius(12)
     }
 }
 
-// MARK: - Grouping
-func groupByHour(records: [HeartRateRecord]) -> [Int: [HeartRateRecord]] {
-    Dictionary(grouping: records) { Calendar.current.component(.hour, from: $0.timestamp) }
-}
-func groupByWeekday(records: [HeartRateRecord]) -> [Int: [HeartRateRecord]] {
-    Dictionary(grouping: records) { Calendar.current.component(.weekday, from: $0.timestamp) }
-}
-func groupByDayOfMonth(records: [HeartRateRecord]) -> [Int: [HeartRateRecord]] {
-    Dictionary(grouping: records) { Calendar.current.component(.day, from: $0.timestamp) }
-}
-
-#Preview {
-    HeartRateView()
+// Preview
+struct HeartRateView_Previews: PreviewProvider {
+    static var previews: some View {
+        HeartRateView()
+    }
 }

@@ -7,6 +7,8 @@ struct SelectGenderView: View {
     let step: Int
 
     @State private var selectedGender: String? = nil
+    @State private var isSaving = false
+
     let genderOptions = ["Male", "Female", "Other", "Prefer not to say"]
 
     var body: some View {
@@ -49,17 +51,46 @@ struct SelectGenderView: View {
 
             // Next button
             Button {
-                if selectedGender != nil {
+                saveAndContinue()
+            } label: {
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                        .cornerRadius(12)
+                } else {
+                    Text("Next")
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                        .cornerRadius(12)
+                }
+            }
+            .disabled(selectedGender == nil || isSaving)
+        }.navigationBarBackButtonHidden(true)
+    }
+
+    private func saveAndContinue() {
+        guard let gender = selectedGender else { return }
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveGender(gender.lowercased().replacingOccurrences(of: " ", with: "_"))
+                await MainActor.run {
+                    isSaving = false
                     next()
                 }
-            } label: {
-                Text("Next")
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                    .cornerRadius(12)
+            } catch {
+                print("❌ Failed to save gender: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
             }
-        }.navigationBarBackButtonHidden(true)
+        }
     }
 }

@@ -7,6 +7,7 @@ struct SymptomsAllergyInputView: View {
     @State private var showAllergyDetails = false
     @State private var allergyDetails: Set<String> = ["Gluten"]
     @State private var allergyDescription: String = ""
+    @State private var isSaving = false
 
     let next: () -> Void
     let back: () -> Void
@@ -24,7 +25,7 @@ struct SymptomsAllergyInputView: View {
                     .font(.subheadline)
                     .foregroundColor(.gray)
 
-                FlowLayout(tags: commonSymptoms.prefix(5).map { String($0) }, selection: $selectedSymptoms)
+                TagFlowLayout(tags: commonSymptoms.prefix(5).map { String($0) }, selection: $selectedSymptoms)
 
                 HStack {
                     TagPill(label: "+4", selected: false, action: {})
@@ -49,7 +50,7 @@ struct SymptomsAllergyInputView: View {
                     .font(.subheadline)
                     .foregroundColor(.gray)
 
-                FlowLayout(tags: allergyCategories, selection: .init(
+                TagFlowLayout(tags: allergyCategories, selection: .init(
                     get: { selectedAllergyCategory.map { [$0] } ?? [] },
                     set: { selectedAllergyCategory = $0.first }
                 )) {
@@ -61,24 +62,74 @@ struct SymptomsAllergyInputView: View {
                 Spacer()
 
                 Button {
-                    next()
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
                 }
+                .disabled(isSaving)
             }
             .sheet(isPresented: $showAllergyDetails) {
                 AllergyDetailModal(selectedTags: $allergyDetails, description: $allergyDescription)
             }
         }
     }
+
+    private func saveAndContinue() {
+        isSaving = true
+
+        // Combine symptoms and allergies into a single string for the API
+        var parts: [String] = []
+
+        if !selectedSymptoms.isEmpty {
+            parts.append("Symptoms: \(selectedSymptoms.joined(separator: ", "))")
+        }
+
+        if let category = selectedAllergyCategory {
+            var allergyPart = "Allergies (\(category))"
+            if !allergyDetails.isEmpty {
+                allergyPart += ": \(allergyDetails.joined(separator: ", "))"
+            }
+            if !allergyDescription.isEmpty {
+                allergyPart += " - \(allergyDescription)"
+            }
+            parts.append(allergyPart)
+        }
+
+        let combinedData = parts.joined(separator: "; ")
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveSymptoms(combinedData)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save symptoms/allergies: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            }
+        }
+    }
 }
 
-struct FlowLayout: View {
+struct TagFlowLayout: View {
     let tags: [String]
     @Binding var selection: Set<String>
     var onTap: ((String) -> Void)? = nil
@@ -136,7 +187,7 @@ struct AllergyDetailModal: View {
                 .font(.headline)
                 .multilineTextAlignment(.center)
 
-            FlowLayout(tags: tags, selection: $selectedTags)
+            TagFlowLayout(tags: tags, selection: $selectedTags)
 
             TextEditor(text: $description)
                 .frame(height: 100)

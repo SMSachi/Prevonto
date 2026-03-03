@@ -31,6 +31,7 @@ struct WeightChartView: View {
 
 class WeightTrackerManager: ObservableObject {
     @Published var entries: [WeightEntry] = []
+    @Published var isSaving = false
     private var repository: WeightRepository
 
     init(repository: WeightRepository = LocalWeightRepository()) {
@@ -43,9 +44,51 @@ class WeightTrackerManager: ObservableObject {
         return entries.map { $0.weightLb }.reduce(0, +) / Double(entries.count)
     }
 
-    func addEntry(weight: Double) {
+    var hasEntryForToday: Bool {
+        repository.hasEntryForToday()
+    }
+
+    var todaysEntry: WeightEntry? {
+        repository.getTodaysEntry()
+    }
+
+    func addOrUpdateEntry(weight: Double, unit: String = "lbs") {
+        // Save locally (repository handles add vs update)
         repository.addEntry(weight: weight)
         entries = repository.fetchEntries()
+
+        // Also save to backend API
+        isSaving = true
+        Task {
+            do {
+                try await HealthMetricsAPI.shared.saveWeight(weight: weight, unit: unit)
+                print("✅ Weight saved to API: \(weight) \(unit)")
+            } catch {
+                print("❌ Failed to save weight to API: \(error)")
+            }
+            await MainActor.run {
+                self.isSaving = false
+            }
+        }
+    }
+
+    func updateEntry(id: UUID, weight: Double, unit: String = "lbs") {
+        repository.updateEntry(id: id, weight: weight)
+        entries = repository.fetchEntries()
+
+        // Also save to backend API
+        isSaving = true
+        Task {
+            do {
+                try await HealthMetricsAPI.shared.saveWeight(weight: weight, unit: unit)
+                print("✅ Weight updated to API: \(weight) \(unit)")
+            } catch {
+                print("❌ Failed to update weight to API: \(error)")
+            }
+            await MainActor.run {
+                self.isSaving = false
+            }
+        }
     }
 }
 
@@ -57,6 +100,9 @@ struct WeightTrackerView: View {
     @State private var selectedUnit: String = "Lb"
     @State private var selectedTab: String = "Week"
     @State private var inputWeight: String = ""
+    @State private var editingEntry: WeightEntry? = nil
+    @State private var showEditAlert: Bool = false
+    @State private var editWeight: String = ""
     @ObservedObject private var manager = WeightTrackerManager()
 
 
@@ -90,32 +136,56 @@ struct WeightTrackerView: View {
     }
 
     private var inputSection: some View {
-        HStack {
-            TextField("Current Weight", text: $inputWeight)
-                .keyboardType(.decimalPad)
-                .padding(.vertical, 12)
+        VStack(alignment: .leading, spacing: 8) {
+            if manager.hasEntryForToday {
+                Text("Update today's weight")
+                    .font(.caption)
+                    .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+            }
 
-            Spacer()
+            HStack {
+                TextField("Enter weight", text: $inputWeight)
+                    .keyboardType(.decimalPad)
+                    .padding(12)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                    .frame(width: 120)
 
-            Button(action: {
-                if let value = Double(inputWeight) {
-                    manager.addEntry(weight: value)
-                    inputWeight = ""
+                Text(selectedUnit)
+                    .foregroundColor(.gray)
+
+                Spacer()
+
+                Button(action: {
+                    if let value = Double(inputWeight) {
+                        let unit = selectedUnit == "Kg" ? "kg" : "lbs"
+                        manager.addOrUpdateEntry(weight: value, unit: unit)
+                        inputWeight = ""
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        if manager.isSaving {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: manager.hasEntryForToday ? "pencil.circle" : "plus.circle")
+                        }
+                        Text(manager.isSaving ? "Saving..." : (manager.hasEntryForToday ? "Update" : "Add"))
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
                 }
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "plus.circle")
-                    Text("Add for Today")
-                }
-                .font(.subheadline)
-                .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+                .disabled(manager.isSaving || inputWeight.isEmpty)
             }
         }
         .padding()
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.3))
-        )
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(radius: 1)
     }
 
     private var averageSection: some View {
@@ -188,15 +258,28 @@ struct WeightTrackerView: View {
 
     private var graphPlaceholder: some View {
         VStack {
-            WeightChartView(data: [
-                ("Su", 113),
-                ("M", 112),
-                ("T", 112.5),
-                ("W", 114),
-                ("Th", 113),
-                ("F", 114),
-                ("S", 113)
-            ])
+            if manager.entries.isEmpty {
+                // No data state
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color.gray.opacity(0.5))
+                    Text("No weight data yet")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    Text("Add your first entry above")
+                        .font(.caption)
+                        .foregroundColor(.gray.opacity(0.7))
+                }
+                .frame(height: 150)
+            } else {
+                // Real data from entries
+                WeightChartView(data: manager.entries.suffix(7).map { entry in
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "E"
+                    return (formatter.string(from: entry.date), entry.weightLb)
+                })
+            }
         }
         .padding()
         .background(Color.white)
@@ -253,14 +336,30 @@ struct WeightTrackerView: View {
                 Image(systemName: "chevron.down")
             }
 
-            ForEach(manager.entries) { entry in
-                HStack {
-                    Text(entry.formattedDate)
-                    Spacer()
-                    Text(String(format: "%.1f", entry.weight(in: selectedUnit)))
+            if manager.entries.isEmpty {
+                Text("No entries yet")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(manager.entries) { entry in
+                    HStack {
+                        Text(entry.formattedDate)
+                        Spacer()
+                        Text(String(format: "%.1f", entry.weight(in: selectedUnit)))
+                        Image(systemName: "pencil")
+                            .font(.caption)
+                            .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        editingEntry = entry
+                        editWeight = String(format: "%.1f", entry.weight(in: selectedUnit))
+                        showEditAlert = true
+                    }
+                    Divider()
                 }
-                .padding(.vertical, 4)
-                Divider()
             }
         }
         .padding()
@@ -268,6 +367,23 @@ struct WeightTrackerView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.gray.opacity(0.3))
         )
+        .alert("Edit Weight", isPresented: $showEditAlert) {
+            TextField("Weight", text: $editWeight)
+                .keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) {
+                editingEntry = nil
+            }
+            Button("Save") {
+                if let entry = editingEntry, let newWeight = Double(editWeight) {
+                    let weightInLb = selectedUnit == "Kg" ? newWeight / 0.453592 : newWeight
+                    let unit = selectedUnit == "Kg" ? "kg" : "lbs"
+                    manager.updateEntry(id: entry.id, weight: weightInLb, unit: unit)
+                }
+                editingEntry = nil
+            }
+        } message: {
+            Text("Enter new weight in \(selectedUnit)")
+        }
     }
 }
 

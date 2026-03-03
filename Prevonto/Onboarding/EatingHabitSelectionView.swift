@@ -3,6 +3,7 @@ import SwiftUI
 
 struct EatingHabitSelectionView: View {
     @State private var selectedHabit: String? = "Mostly Vegetarian"
+    @State private var isSaving = false
 
     let next: () -> Void
     let back: () -> Void
@@ -61,16 +62,45 @@ struct EatingHabitSelectionView: View {
             Spacer()
 
             Button {
-                if selectedHabit != nil {
+                saveAndContinue()
+            } label: {
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                        .cornerRadius(12)
+                } else {
+                    Text("Next")
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                        .cornerRadius(12)
+                }
+            }
+            .disabled(selectedHabit == nil || isSaving)
+        }
+    }
+
+    private func saveAndContinue() {
+        guard let habit = selectedHabit else { return }
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveDiet(habit.lowercased().replacingOccurrences(of: " ", with: "_"))
+                await MainActor.run {
+                    isSaving = false
                     next()
                 }
-            } label: {
-                Text("Next")
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                    .cornerRadius(12)
+            } catch {
+                print("❌ Failed to save diet: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
             }
         }
     }

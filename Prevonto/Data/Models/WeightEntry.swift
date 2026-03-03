@@ -2,9 +2,21 @@
 import Foundation
 
 struct WeightEntry: Identifiable, Codable {
-    let id: UUID = UUID()
+    let id: UUID
     let date: Date
     let weightLb: Double
+
+    init(date: Date, weightLb: Double) {
+        self.id = UUID()
+        self.date = date
+        self.weightLb = weightLb
+    }
+
+    init(id: UUID, date: Date, weightLb: Double) {
+        self.id = id
+        self.date = date
+        self.weightLb = weightLb
+    }
 
     var formattedDate: String {
         let formatter = DateFormatter()

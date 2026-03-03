@@ -4,6 +4,7 @@ import SwiftUI
 struct WeightSelectionView: View {
     @State private var selectedUnit: String = "lbs"
     @State private var selectedWeight: Int = 140
+    @State private var isSaving = false
 
     let lbRange = Array(80...300)
     let kgRange = Array(36...136)
@@ -45,14 +46,44 @@ struct WeightSelectionView: View {
 
                 // Next button
                 Button {
-                    next()
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
+                }
+                .disabled(isSaving)
+            }
+        }
+    }
+
+    private func saveAndContinue() {
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveWeight(Double(selectedWeight), unit: selectedUnit)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save weight: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
                 }
             }
         }

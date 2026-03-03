@@ -3,17 +3,18 @@ import SwiftUI
 
 struct EmotionSelectionView: View {
     @State private var selectedEmotionIndex = 2
+    @State private var isSaving = false
 
     let next: () -> Void
     let back: () -> Void
     let step: Int
 
-    let emotions: [(icon: String, description: String)] = [
-        ("😫", "exhausted"),
-        ("☹️", "a bit down"),
-        ("😐", "neutral"),
-        ("🙂", "content"),
-        ("😄", "happy")
+    let emotions: [(icon: String, description: String, apiValue: String)] = [
+        ("😫", "exhausted", "exhausted"),
+        ("☹️", "a bit down", "down"),
+        ("😐", "neutral", "neutral"),
+        ("🙂", "content", "content"),
+        ("😄", "happy", "happy")
     ]
 
     var body: some View {
@@ -49,17 +50,47 @@ struct EmotionSelectionView: View {
 
                 // Next button
                 Button {
-                    next()
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
                 }
+                .disabled(isSaving)
 
                 Spacer()
+            }
+        }
+    }
+
+    private func saveAndContinue() {
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveMood(emotions[selectedEmotionIndex].apiValue)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save mood: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
             }
         }
     }

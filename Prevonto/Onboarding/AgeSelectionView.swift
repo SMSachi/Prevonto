@@ -3,6 +3,8 @@ import SwiftUI
 
 struct AgeSelectionView: View {
     @State private var selectedAge: Int = 19
+    @State private var isSaving = false
+
     let next: () -> Void
     let back: () -> Void
     let step: Int
@@ -17,14 +19,44 @@ struct AgeSelectionView: View {
 
                 // Next Button
                 Button {
-                    next()
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
+                }
+                .disabled(isSaving)
+            }
+        }
+    }
+
+    private func saveAndContinue() {
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveAge(selectedAge)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save age: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
                 }
             }
         }

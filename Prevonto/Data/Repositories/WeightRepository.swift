@@ -4,4 +4,7 @@ import Foundation
 protocol WeightRepository {
     func fetchEntries() -> [WeightEntry]
     func addEntry(weight: Double)
+    func updateEntry(id: UUID, weight: Double)
+    func hasEntryForToday() -> Bool
+    func getTodaysEntry() -> WeightEntry?
 }

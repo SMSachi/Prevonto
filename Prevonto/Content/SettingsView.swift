@@ -6,6 +6,11 @@ struct SettingsView: View {
     @State private var showLogoutSheet = false
     @State private var showDeleteSheet = false
     @State private var navigateToSignUp = false
+
+    // Profile data from API
+    @State private var userName: String = "Your Name"
+    @State private var userEmail: String = "yourname@example.com"
+    @State private var isLoadingProfile = false
     
     var body: some View {
         NavigationStack {
@@ -77,8 +82,13 @@ struct SettingsView: View {
                     
                     // Log out button in Log out modal sheet
                     Button(action: {
-                        showLogoutSheet = false
-                        navigateToSignUp = true
+                        Task {
+                            await AuthManager.shared.logout()
+                            await MainActor.run {
+                                showLogoutSheet = false
+                                navigateToSignUp = true
+                            }
+                        }
                     }) {
                         Text("Log Out")
                             .font(.custom("Noto Sans", size: 18))
@@ -132,9 +142,15 @@ struct SettingsView: View {
                     .padding(.horizontal, 24)
                     
                     // Delete Account button in Delete Account modal sheet
+                    // Delete Account button in Delete Account modal sheet
                     Button(action: {
-                        showDeleteSheet = false
-                        navigateToSignUp = true
+                        Task {
+                            try? await SettingsAPI.shared.deleteAccount(password: nil)
+                            await MainActor.run {
+                                showDeleteSheet = false
+                                navigateToSignUp = true
+                            }
+                        }
                     }) {
                         Text("Delete Account")
                             .font(.custom("Noto Sans", size: 18))
@@ -156,6 +172,34 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $navigateToSignUp) {
             SignUpView()
                 .navigationBarBackButtonHidden(true)
+        }
+        .onAppear {
+            loadProfile()
+        }
+    }
+
+    // MARK: - API Functions
+    private func loadProfile() {
+        isLoadingProfile = true
+
+        Task {
+            do {
+                let profile = try await SettingsAPI.shared.getProfile()
+                await MainActor.run {
+                    if let name = profile.full_name, !name.isEmpty {
+                        userName = name
+                    }
+                    if let email = profile.email, !email.isEmpty {
+                        userEmail = email
+                    }
+                    isLoadingProfile = false
+                }
+            } catch {
+                await MainActor.run {
+                    isLoadingProfile = false
+                    // Keep default placeholder values on error
+                }
+            }
         }
     }
     
@@ -210,20 +254,25 @@ struct SettingsView: View {
                                 .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
                         )
                         .padding(.trailing, 4)
-                    
+
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Your Name")
-                            .font(.custom("Noto Sans", size: 16))
-                            .fontWeight(.medium)
-                            .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
-                        
-                        Text("yourname@example.com")
-                            .font(.custom("Noto Sans", size: 14))
-                            .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
+                        if isLoadingProfile {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Text(userName)
+                                .font(.custom("Noto Sans", size: 16))
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
+
+                            Text(userEmail)
+                                .font(.custom("Noto Sans", size: 14))
+                                .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
+                        }
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14))
                         .fontWeight(.medium)
@@ -267,7 +316,7 @@ struct SettingsView: View {
                         topTrailingRadius: 6
                     )
                 )
-                
+
                 NavigationLink(destination: LanguageView()) {
                     SettingsRowView(
                         icon: "globe",
@@ -276,7 +325,17 @@ struct SettingsView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
+                NavigationLink(destination: ChangePasswordView()) {
+                    SettingsRowView(
+                        icon: "lock",
+                        title: "Change Password",
+                        subtitle: nil,
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+
                 Button(action: {
                     showLogoutSheet = true
                 }) {

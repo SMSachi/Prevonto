@@ -3,10 +3,32 @@ import SwiftUI
 import Charts
 
 struct MoodLogEntry: Identifiable {
-    let id = UUID()
+    let id: UUID
     let date: Date
     let mood: MoodType
     let energy: Int
+
+    init(date: Date, mood: MoodType, energy: Int) {
+        self.id = UUID()
+        self.date = date
+        self.mood = mood
+        self.energy = energy
+    }
+
+    init(id: UUID, date: Date, mood: MoodType, energy: Int) {
+        self.id = id
+        self.date = date
+        self.mood = mood
+        self.energy = energy
+    }
+
+    // Convert from MoodEntry (persisted) to MoodLogEntry (view model)
+    init(from entry: MoodEntry) {
+        self.id = entry.id
+        self.date = entry.date
+        self.mood = MoodType(rawValue: entry.moodValue) ?? .neutral
+        self.energy = entry.energy
+    }
 }
 
 enum MoodType: String, CaseIterable {
@@ -33,6 +55,17 @@ enum MoodType: String, CaseIterable {
         case .neutral: return "😐"
         case .happy: return "🙂"
         case .veryHappy: return "😄"
+        }
+    }
+
+    // Convert to API value (1-10 scale)
+    var apiValue: Int {
+        switch self {
+        case .verySad: return 2
+        case .sad: return 4
+        case .neutral: return 5
+        case .happy: return 7
+        case .veryHappy: return 9
         }
     }
 }
@@ -97,10 +130,60 @@ struct MoodEntryCard: View {
     }
 }
 
+// MARK: - Mood Tracker Manager
+class MoodTrackerManager: ObservableObject {
+    @Published var entries: [MoodLogEntry] = []
+    @Published var isSaving = false
+    private var repository: MoodRepository
+
+    init(repository: MoodRepository = LocalMoodRepository()) {
+        self.repository = repository
+        loadEntries()
+    }
+
+    private func loadEntries() {
+        entries = repository.fetchEntries().map { MoodLogEntry(from: $0) }
+    }
+
+    var averageEnergy: Double {
+        guard !entries.isEmpty else { return 0 }
+        return Double(entries.map { $0.energy }.reduce(0, +)) / Double(entries.count)
+    }
+
+    var latestMood: MoodType? {
+        entries.first?.mood
+    }
+
+    var hasEntryForToday: Bool {
+        repository.hasEntryForToday()
+    }
+
+    func addEntry(mood: MoodType, energy: Int) {
+        // Save locally
+        repository.addEntry(moodValue: mood.rawValue, energy: energy)
+        loadEntries()
+
+        // Also save to backend API
+        isSaving = true
+        Task {
+            do {
+                try await HealthMetricsAPI.shared.saveEnergyMood(energy: energy, mood: mood.apiValue)
+                print("✅ Mood/Energy saved to API: energy=\(energy), mood=\(mood.apiValue)")
+            } catch {
+                print("❌ Failed to save mood/energy to API: \(error)")
+            }
+            await MainActor.run {
+                self.isSaving = false
+            }
+        }
+    }
+}
+
 struct EnergyEntryCard: View {
     @Binding var show: Bool
     var onSave: (Int) -> Void
     @State private var selectedEnergy = 7
+    @State private var isSaving = false
 
     var body: some View {
         ZStack {
@@ -151,15 +234,24 @@ struct EnergyEntryCard: View {
                 Text("\(selectedEnergy)/10")
                     .font(.headline)
 
-                Button("Save") {
+                Button(action: {
                     onSave(selectedEnergy)
                     show = false
+                }) {
+                    HStack {
+                        if isSaving {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                        Text(isSaving ? "Saving..." : "Save")
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.primaryColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.primaryColor)
-                .foregroundColor(.white)
-                .cornerRadius(10)
+                .disabled(isSaving)
             }
             .padding()
             .background(Color.white)
@@ -173,11 +265,7 @@ struct EnergyEntryCard: View {
 
 struct MoodTrackerView: View {
     @State private var selectedTab = "Month"
-    @State private var entries: [MoodLogEntry] = [
-        MoodLogEntry(date: Calendar.current.date(byAdding: .day, value: -5, to: Date())!, mood: .sad, energy: 4),
-        MoodLogEntry(date: Calendar.current.date(byAdding: .day, value: -3, to: Date())!, mood: .happy, energy: 7),
-        MoodLogEntry(date: Calendar.current.date(byAdding: .day, value: -1, to: Date())!, mood: .neutral, energy: 5)
-    ]
+    @StateObject private var manager = MoodTrackerManager()
     @State private var showMoodEntry = false
     @State private var showEnergyEntry = false
     @State private var tempMood: MoodType? = nil
@@ -210,7 +298,8 @@ struct MoodTrackerView: View {
             if showEnergyEntry {
                 EnergyEntryCard(show: $showEnergyEntry) { energy in
                     if let mood = tempMood {
-                        entries.append(MoodLogEntry(date: Date(), mood: mood, energy: energy))
+                        // Add to local entries and save to API
+                        manager.addEntry(mood: mood, energy: energy)
                         tempMood = nil
                     }
                 }
@@ -239,25 +328,47 @@ struct MoodTrackerView: View {
         Button(action: {
             showMoodEntry = true
         }) {
-            Text("Log energy levels")
-                .foregroundColor(.white)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.primaryColor)
-                .cornerRadius(12)
+            HStack {
+                if manager.isSaving {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                }
+                Text(manager.isSaving ? "Saving..." : (manager.hasEntryForToday ? "Update today's mood" : "Log energy levels"))
+            }
+            .foregroundColor(.white)
+            .fontWeight(.semibold)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.primaryColor)
+            .cornerRadius(12)
         }
+        .disabled(manager.isSaving)
     }
 
     private var moodSummary: some View {
         VStack(spacing: 4) {
-            Image(systemName: "face.smiling")
-                .font(.largeTitle)
-            Text("Neutral")
-                .font(.headline)
-            Text("Avg energy level: 7.5/10")
-                .font(.footnote)
-                .foregroundColor(.gray)
+            if manager.entries.isEmpty {
+                Image(systemName: "face.dashed")
+                    .font(.largeTitle)
+                    .foregroundColor(.gray)
+                Text("No mood logged yet")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+                Text("Tap 'Log energy levels' to start")
+                    .font(.footnote)
+                    .foregroundColor(.gray.opacity(0.7))
+            } else {
+                let latestMood = manager.latestMood ?? .neutral
+                let avgEnergy = manager.averageEnergy
+
+                Text(latestMood.icon)
+                    .font(.largeTitle)
+                Text(latestMood.rawValue)
+                    .font(.headline)
+                Text("Avg energy level: \(String(format: "%.1f", avgEnergy))/10")
+                    .font(.footnote)
+                    .foregroundColor(.gray)
+            }
         }
         .padding()
         .background(Color.white)
@@ -284,7 +395,7 @@ struct MoodTrackerView: View {
     }
 
     private var calendarSection: some View {
-        ExampleCalendarView(entries: entries)
+        ExampleCalendarView(entries: manager.entries)
     }
 
     private var energyChart: some View {
@@ -293,23 +404,36 @@ struct MoodTrackerView: View {
                 .font(.headline)
                 .foregroundColor(.primaryColor)
 
-            Chart {
-                ForEach(entries) { entry in
-                    BarMark(
-                        x: .value("Date", entry.date, unit: .day),
-                        y: .value("Energy", entry.energy)
-                    )
-                    .foregroundStyle(Color.secondaryColor)
+            if manager.entries.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.bar")
+                        .font(.system(size: 30))
+                        .foregroundColor(.gray.opacity(0.5))
+                    Text("No data yet")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day)) { value in
-                    AxisGridLine()
-                    AxisValueLabel(format: .dateTime.day(.defaultDigits))
+                .frame(height: 150)
+                .frame(maxWidth: .infinity)
+            } else {
+                Chart {
+                    ForEach(manager.entries) { entry in
+                        BarMark(
+                            x: .value("Date", entry.date, unit: .day),
+                            y: .value("Energy", entry.energy)
+                        )
+                        .foregroundStyle(Color.secondaryColor)
+                    }
                 }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day)) { value in
+                        AxisGridLine()
+                        AxisValueLabel(format: .dateTime.day(.defaultDigits))
+                    }
+                }
+                .chartYScale(domain: 0...10)
+                .frame(height: 150)
             }
-            .chartYScale(domain: 0...10)
-            .frame(height: 150)
         }
         .padding()
         .background(Color.white)
@@ -340,7 +464,7 @@ struct MoodTrackerView: View {
 struct ExampleCalendarView: View {
     @State private var currentDate = Date()
     let entries: [MoodLogEntry]  // <- add this
-    
+
     private var today: Date {
         Calendar.current.startOfDay(for: Date())
     }

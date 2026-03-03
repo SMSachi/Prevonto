@@ -4,6 +4,7 @@ import SwiftUI
 struct MedicationSelectionView: View {
     @State private var selectedMeds: [String] = []
     @State private var searchQuery: String = ""
+    @State private var isSaving = false
 
     let next: () -> Void
     let back: () -> Void
@@ -104,15 +105,25 @@ struct MedicationSelectionView: View {
 
                 // Next button
                 Button {
-                    next()
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
                 }
+                .disabled(isSaving)
             }
         }
     }
@@ -122,6 +133,27 @@ struct MedicationSelectionView: View {
             selectedMeds.removeAll { $0 == medication }
         } else {
             selectedMeds.append(medication)
+        }
+    }
+
+    private func saveAndContinue() {
+        isSaving = true
+
+        Task {
+            do {
+                let medicationDTOs = selectedMeds.map { MedicationDTO(name: $0, dosage: nil, frequency: nil) }
+                try await OnboardingAPI.shared.saveMedications(medicationDTOs)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save medications: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            }
         }
     }
 }

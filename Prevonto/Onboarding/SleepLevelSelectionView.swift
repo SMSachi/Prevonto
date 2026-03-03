@@ -3,7 +3,8 @@ import SwiftUI
 
 struct SleepLevelSelectionView: View {
     @State private var selectedLevel: Int? = nil
-    
+    @State private var isSaving = false
+
     let next: () -> Void
     let back: () -> Void
     let step: Int
@@ -12,14 +13,15 @@ struct SleepLevelSelectionView: View {
         let id: Int
         let title: String
         let subtitle: String
+        let apiValue: String
     }
 
     let sleepOptions: [SleepOption] = [
-        .init(id: 1, title: "😴 Very Low", subtitle: "~0–3hr daily"),
-        .init(id: 2, title: "😪 Low", subtitle: "~3–5hr daily"),
-        .init(id: 3, title: "💤 Moderate", subtitle: "~5–8hr daily"),
-        .init(id: 4, title: "😌 High", subtitle: "~8–10hr daily"),
-        .init(id: 5, title: "🛌 Excellent", subtitle: "10+ hr daily")
+        .init(id: 1, title: "Very Low", subtitle: "~0–3hr daily", apiValue: "very_low"),
+        .init(id: 2, title: "Low", subtitle: "~3–5hr daily", apiValue: "low"),
+        .init(id: 3, title: "Moderate", subtitle: "~5–8hr daily", apiValue: "moderate"),
+        .init(id: 4, title: "High", subtitle: "~8–10hr daily", apiValue: "high"),
+        .init(id: 5, title: "Excellent", subtitle: "10+ hr daily", apiValue: "excellent")
     ]
 
     var body: some View {
@@ -68,16 +70,46 @@ struct SleepLevelSelectionView: View {
                 Spacer()
 
                 Button {
-                    if selectedLevel != nil {
-                        next()
-                    }
+                    saveAndContinue()
                 } label: {
-                    Text("Next")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                        .cornerRadius(12)
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    } else {
+                        Text("Next")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                            .cornerRadius(12)
+                    }
+                }
+                .disabled(selectedLevel == nil || isSaving)
+            }
+        }
+    }
+
+    private func saveAndContinue() {
+        guard let level = selectedLevel,
+              let option = sleepOptions.first(where: { $0.id == level }) else { return }
+        isSaving = true
+
+        Task {
+            do {
+                try await OnboardingAPI.shared.saveSleepLevel(option.apiValue)
+                await MainActor.run {
+                    isSaving = false
+                    next()
+                }
+            } catch {
+                print("❌ Failed to save sleep level: \(error)")
+                await MainActor.run {
+                    isSaving = false
+                    next()
                 }
             }
         }
