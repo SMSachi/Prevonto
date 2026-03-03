@@ -188,6 +188,12 @@ struct SignUpView: View {
             showValidationMessage = true
             return
         }
+
+        if password.count < 8 {
+            errorMessage = "Password must be at least 8 characters."
+            showValidationMessage = true
+            return
+        }
         
         if !acceptedTerms {
             errorMessage = "Please accept the terms and conditions."
@@ -212,11 +218,28 @@ struct SignUpView: View {
                     isLoading = false
                     navigateToOnboarding = true  // New users go to onboarding
                 }
+            } catch let error as APIError {
+                print("❌ Registration failed: \(error)")
+                await MainActor.run {
+                    isLoading = false
+                    if case .httpError(let code, let body) = error {
+                        if code == 400 && body.contains("already") {
+                            errorMessage = "Email already registered. Try logging in."
+                        } else if code == 400 {
+                            errorMessage = "Invalid input. Check email format and password (8+ chars)."
+                        } else {
+                            errorMessage = "Registration failed. Please try again."
+                        }
+                    } else {
+                        errorMessage = "Registration failed. Please try again."
+                    }
+                    showValidationMessage = true
+                }
             } catch {
                 print("❌ Registration failed: \(error)")
                 await MainActor.run {
                     isLoading = false
-                    errorMessage = "Registration failed. Email may already exist."
+                    errorMessage = "Connection error. Check your internet."
                     showValidationMessage = true
                 }
             }
@@ -253,11 +276,28 @@ struct SignUpView: View {
                         navigateToOnboarding = true  // Incomplete onboarding -> continue
                     }
                 }
+            } catch let error as APIError {
+                print("❌ Login failed: \(error)")
+                await MainActor.run {
+                    isLoading = false
+                    if case .httpError(let code, _) = error {
+                        if code == 401 {
+                            errorMessage = "Invalid email or password. Check your credentials."
+                        } else if code == 404 {
+                            errorMessage = "Account not found. Please sign up first."
+                        } else {
+                            errorMessage = "Login failed. Please try again."
+                        }
+                    } else {
+                        errorMessage = "Login failed. Please try again."
+                    }
+                    showValidationMessage = true
+                }
             } catch {
                 print("❌ Login failed: \(error)")
                 await MainActor.run {
                     isLoading = false
-                    errorMessage = "Invalid email or password."
+                    errorMessage = "Connection error. Check your internet."
                     showValidationMessage = true
                 }
             }
