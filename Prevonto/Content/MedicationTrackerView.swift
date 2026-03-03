@@ -1,5 +1,6 @@
 // Medication Log - Track daily medications with time-based scheduling
 import SwiftUI
+import UserNotifications
 
 struct MedicationTrackerView: View {
     @Environment(\.dismiss) private var dismiss
@@ -37,7 +38,10 @@ struct MedicationTrackerView: View {
                 }
             }
             .navigationBarHidden(true)
-            .onAppear { loadMedications() }
+            .onAppear {
+                loadMedications()
+                requestNotificationPermission()
+            }
             .sheet(isPresented: $showingAddSheet) {
                 AddMedicationSheet(onSave: { medication in
                     medications.append(medication)
@@ -354,6 +358,72 @@ struct MedicationTrackerView: View {
     private func saveMedications() {
         if let encoded = try? JSONEncoder().encode(medications) {
             UserDefaults.standard.set(encoded, forKey: "trackedMedications")
+        }
+        // Reschedule all notifications
+        scheduleAllNotifications()
+    }
+
+    private func scheduleAllNotifications() {
+        // First, remove all existing medication notifications
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            let medNotifications = requests.filter { $0.identifier.hasPrefix("med_") }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: medNotifications.map { $0.identifier })
+
+            // Schedule notifications for each medication with a reminder time
+            for medication in self.medications {
+                self.scheduleNotification(for: medication)
+            }
+        }
+    }
+
+    private func scheduleNotification(for medication: TrackedMedication) {
+        guard let reminderTimeStr = medication.reminderTime else { return }
+
+        // Parse the reminder time
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        guard let reminderTime = formatter.date(from: reminderTimeStr) else { return }
+
+        // Get hour and minute components
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: reminderTime)
+        let minute = calendar.component(.minute, from: reminderTime)
+
+        // Create the notification content
+        let content = UNMutableNotificationContent()
+        content.title = "Medication Reminder"
+        content.body = "Time to take \(medication.name)" + (medication.dosage != nil ? " (\(medication.dosage!))" : "")
+        content.sound = .default
+        content.categoryIdentifier = "MEDICATION_REMINDER"
+
+        // Create a daily trigger
+        var dateComponents = DateComponents()
+        dateComponents.hour = hour
+        dateComponents.minute = minute
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+
+        // Create the request
+        let identifier = "med_\(medication.id.uuidString)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        // Schedule the notification
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Failed to schedule notification: \(error)")
+            } else {
+                print("✅ Scheduled notification for \(medication.name) at \(reminderTimeStr)")
+            }
+        }
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                print("✅ Notification permission granted")
+            } else if let error = error {
+                print("❌ Notification permission denied: \(error)")
+            }
         }
     }
 

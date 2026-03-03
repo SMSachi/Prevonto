@@ -526,13 +526,16 @@ class HealthKitManager {
     // MARK: - Backend Sync
 
     /// Sync all HealthKit data to the backend
-    func syncToBackend(daysBack: Int = 7) async throws {
+    /// - Parameter daysBack: Number of days to sync (default 365 for historical data)
+    func syncToBackend(daysBack: Int = 365) async throws {
         let endDate = Date()
         let startDate = Calendar.current.date(byAdding: .day, value: -daysBack, to: endDate)!
 
         var allSamples: [HealthKitSyncSample] = []
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
+
+        print("📊 Fetching HealthKit data from \(startDate) to \(endDate)")
 
         // Fetch heart rate
         let heartRateSamples = try await fetchHeartRateSamples(from: startDate, to: endDate)
@@ -546,6 +549,7 @@ class HealthKitManager {
                 source_id: UUID().uuidString
             ))
         }
+        print("  - Heart rate: \(heartRateSamples.count) samples")
 
         // Fetch steps
         let stepSamples = try await fetchStepSamples(from: startDate, to: endDate)
@@ -559,6 +563,7 @@ class HealthKitManager {
                 source_id: UUID().uuidString
             ))
         }
+        print("  - Steps: \(stepSamples.count) samples")
 
         // Fetch active energy
         let energySamples = try await fetchActiveEnergySamples(from: startDate, to: endDate)
@@ -572,11 +577,72 @@ class HealthKitManager {
                 source_id: UUID().uuidString
             ))
         }
+        print("  - Calories: \(energySamples.count) samples")
 
-        // Sync to backend
+        // Fetch weight - NEW
+        let weightSamples = try await fetchWeightSamplesAsync(from: startDate, to: endDate)
+        for sample in weightSamples {
+            allSamples.append(HealthKitSyncSample(
+                metric_type: "weight",
+                measured_at: formatter.string(from: sample.timestamp),
+                value: ["weight": sample.value],
+                unit: "lbs",
+                source: "healthkit",
+                source_id: UUID().uuidString
+            ))
+        }
+        print("  - Weight: \(weightSamples.count) samples")
+
+        // Fetch SpO2
+        let spo2Samples = try await fetchSpO2SamplesAsync(from: startDate, to: endDate)
+        for sample in spo2Samples {
+            allSamples.append(HealthKitSyncSample(
+                metric_type: "spo2",
+                measured_at: formatter.string(from: sample.timestamp),
+                value: ["value": sample.value * 100], // Convert decimal to percentage
+                unit: "%",
+                source: "healthkit",
+                source_id: UUID().uuidString
+            ))
+        }
+        print("  - SpO2: \(spo2Samples.count) samples")
+
+        // Sync to backend in batches (to avoid request size limits)
         if !allSamples.isEmpty {
-            try await HealthMetricsAPI.shared.syncHealthKitData(allSamples)
+            let batchSize = 100
+            for i in stride(from: 0, to: allSamples.count, by: batchSize) {
+                let batch = Array(allSamples[i..<min(i + batchSize, allSamples.count)])
+                try await HealthMetricsAPI.shared.syncHealthKitData(batch)
+            }
             print("✅ Synced \(allSamples.count) HealthKit samples to backend")
+        } else {
+            print("⚠️ No HealthKit samples found to sync")
+        }
+    }
+
+    /// Async wrapper for fetching weight samples
+    func fetchWeightSamplesAsync(from startDate: Date, to endDate: Date) async throws -> [HealthDataSample] {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchWeightSamples(from: startDate, to: endDate) { samples, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: samples)
+                }
+            }
+        }
+    }
+
+    /// Async wrapper for fetching SpO2 samples
+    func fetchSpO2SamplesAsync(from startDate: Date, to endDate: Date) async throws -> [HealthDataSample] {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchSpO2Samples(from: startDate, to: endDate) { samples, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: samples)
+                }
+            }
         }
     }
 }

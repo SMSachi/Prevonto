@@ -169,20 +169,19 @@ struct DevicesView: View {
     }
 
     private func connectToHealthApp() {
-        healthKitManager.requestAuthorization { success, error in
+        // Request extended authorization for more data types
+        healthKitManager.requestExtendedAuthorization { success, error in
             DispatchQueue.main.async {
                 self.isHealthKitAuthorized = success
                 if success {
-                    self.healthKitManager.fetchTodayStepCount { steps, _ in
-                        DispatchQueue.main.async {
-                            self.hasHealthData = (steps ?? 0) > 0
-                        }
-                    }
-                    // Sync HealthKit data to backend
+                    self.hasHealthData = true // Assume we have data once authorized
+
+                    // Sync HealthKit historical data to backend (5 years = 1825 days)
                     Task {
                         do {
-                            try await self.healthKitManager.syncToBackend(daysBack: 7)
-                            print("✅ HealthKit data synced to backend")
+                            print("📊 Starting historical HealthKit sync...")
+                            try await self.healthKitManager.syncToBackend(daysBack: 1825)
+                            print("✅ HealthKit historical data synced to backend")
                         } catch {
                             print("⚠️ HealthKit sync failed: \(error)")
                         }

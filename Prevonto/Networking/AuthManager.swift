@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 class AuthManager: ObservableObject {
     static let shared = AuthManager()
@@ -113,14 +114,18 @@ class AuthManager: ObservableObject {
         // Clear medications
         UserDefaults.standard.removeObject(forKey: "trackedMedications")
 
-        // Clear mood entries
-        UserDefaults.standard.removeObject(forKey: "moodEntries")
+        // Clear mood entries (note: key uses underscore)
+        UserDefaults.standard.removeObject(forKey: "mood_entries")
 
-        // Clear weight entries
-        UserDefaults.standard.removeObject(forKey: "weightEntries")
+        // Clear weight entries (note: key uses underscore)
+        UserDefaults.standard.removeObject(forKey: "weight_entries")
 
         // Clear liquid log entries
         UserDefaults.standard.removeObject(forKey: "liquidEntries")
+        UserDefaults.standard.removeObject(forKey: "liquid_entries")
+
+        // Clear blood glucose entries
+        UserDefaults.standard.removeObject(forKey: "blood_glucose_entries")
 
         // Clear notification settings
         UserDefaults.standard.removeObject(forKey: "showHeartRate")
@@ -128,6 +133,10 @@ class AuthManager: ObservableObject {
 
         // Clear onboarding data
         UserDefaults.standard.removeObject(forKey: "onboardingData")
+        UserDefaults.standard.removeObject(forKey: "onboarding_completed")
+
+        // Clear any pending notifications
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
 
         print("🧹 All local data cleared")
     }
