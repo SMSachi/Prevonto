@@ -10,9 +10,10 @@ struct DevicesView: View {
     let healthKitManager = HealthKitManager()
 
     // Paired devices - will show Apple Health connection if authorized
+    // When authorized, always show as connected (data availability is separate from connection)
     var pairedDevices: [Device] {
         if isHealthKitAuthorized {
-            return [Device(name: "Apple Health", type: .appleHealth, isConnected: hasHealthData)]
+            return [Device(name: "Apple Health", type: .appleHealth, isConnected: true)]
         }
         return []
     }
@@ -216,29 +217,29 @@ struct DevicesView: View {
 // MARK: - Device Row Component
 struct DeviceRowView: View {
     let device: Device
-    
+
     var body: some View {
         HStack(spacing: 16) {
             // Device Icon
             Image(systemName: device.iconName)
                 .font(.system(size: 24))
-                .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
+                .foregroundColor(device.isConnected ? Color(red: 0.36, green: 0.55, blue: 0.37) : Color(red: 0.60, green: 0.60, blue: 0.60))
                 .frame(width: 40, height: 40)
-            
+
             // Device Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name)
                     .font(.custom("Noto Sans", size: 16))
                     .fontWeight(.medium)
                     .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
-                
-                Text(device.isConnected ? "Connected" : "Not Connected")
+
+                Text(device.isConnected ? "Syncing data" : "Not connected")
                     .font(.custom("Noto Sans", size: 14))
                     .foregroundColor(device.isConnected ? Color(red: 0.36, green: 0.55, blue: 0.37) : Color(red: 0.60, green: 0.60, blue: 0.60))
             }
-            
+
             Spacer()
-            
+
             // Connection Status
             Circle()
                 .fill(device.isConnected ? Color(red: 0.36, green: 0.55, blue: 0.37) : Color(red: 0.85, green: 0.85, blue: 0.85))

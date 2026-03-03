@@ -294,10 +294,31 @@ struct MedicationTrackerView: View {
     }
 
     private var weeklyCompletionRate: Double {
-        let total = medications.count * 7
-        guard total > 0 else { return 0 }
-        let taken = medications.filter { $0.todayStatus == .taken }.count * 7
-        return Double(taken) / Double(total)
+        guard !medications.isEmpty else { return 0 }
+
+        let calendar = Calendar.current
+        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: selectedDate))!
+
+        var takenCount = 0
+        var totalPossible = 0
+
+        // Only count days up to and including today
+        for dayOffset in 0..<7 {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startOfWeek) else { continue }
+            if date > Date() { continue } // Don't count future days
+
+            totalPossible += medications.count
+
+            for medication in medications {
+                let status = medication.statusFor(date: date)
+                if status == .taken {
+                    takenCount += 1
+                }
+            }
+        }
+
+        guard totalPossible > 0 else { return 0 }
+        return Double(takenCount) / Double(totalPossible)
     }
 
     private var weekDateRange: String {
@@ -342,6 +363,9 @@ struct MedicationTrackerView: View {
             if status == .taken {
                 medications[index].lastTakenDate = Date()
             }
+            // Save to daily history
+            let dateKey = TrackedMedication.dateKey(for: selectedDate)
+            medications[index].dailyHistory[dateKey] = status.rawValue
             saveMedications()
         }
     }
@@ -416,15 +440,31 @@ struct WeeklyDaySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(formattedDayHeader)
-                .font(.custom("Noto Sans", size: 16))
-                .fontWeight(.semibold)
-                .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+            HStack {
+                Text(formattedDayHeader)
+                    .font(.custom("Noto Sans", size: 16))
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
+
+                Spacer()
+
+                // Day completion badge
+                let dayCompletion = dayCompletionRate
+                Text("\(Int(dayCompletion * 100))%")
+                    .font(.custom("Noto Sans", size: 12))
+                    .fontWeight(.medium)
+                    .foregroundColor(dayCompletion >= 0.8 ? Color(red: 0.36, green: 0.55, blue: 0.37) : Color(red: 0.60, green: 0.60, blue: 0.60))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(dayCompletion >= 0.8 ? Color(red: 0.36, green: 0.55, blue: 0.37).opacity(0.1) : Color(red: 0.90, green: 0.90, blue: 0.90))
+                    .cornerRadius(6)
+            }
 
             ForEach(medications) { medication in
+                let status = medication.statusFor(date: day.date)
                 HStack {
-                    Image(systemName: medication.todayStatus == .taken ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(medication.todayStatus == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : Color(red: 0.85, green: 0.85, blue: 0.85))
+                    Image(systemName: statusIcon(for: status))
+                        .foregroundColor(statusColor(for: status))
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(medication.name)
@@ -436,6 +476,10 @@ struct WeeklyDaySection: View {
                     }
 
                     Spacer()
+
+                    Text(statusText(for: status))
+                        .font(.custom("Noto Sans", size: 12))
+                        .foregroundColor(statusColor(for: status))
                 }
                 .padding(.vertical, 8)
             }
@@ -449,6 +493,36 @@ struct WeeklyDaySection: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMMM d"
         return formatter.string(from: day.date)
+    }
+
+    private var dayCompletionRate: Double {
+        guard !medications.isEmpty else { return 0 }
+        let takenCount = medications.filter { $0.statusFor(date: day.date) == .taken }.count
+        return Double(takenCount) / Double(medications.count)
+    }
+
+    private func statusIcon(for status: MedicationStatus) -> String {
+        switch status {
+        case .taken: return "checkmark.circle.fill"
+        case .skipped: return "xmark.circle.fill"
+        case .pending: return "circle"
+        }
+    }
+
+    private func statusColor(for status: MedicationStatus) -> Color {
+        switch status {
+        case .taken: return Color(red: 0.36, green: 0.55, blue: 0.37)
+        case .skipped: return .orange
+        case .pending: return Color(red: 0.85, green: 0.85, blue: 0.85)
+        }
+    }
+
+    private func statusText(for status: MedicationStatus) -> String {
+        switch status {
+        case .taken: return "Taken"
+        case .skipped: return "Skipped"
+        case .pending: return "Pending"
+        }
     }
 }
 
@@ -539,6 +613,27 @@ struct TrackedMedication: Identifiable, Codable {
     var reminderTime: String?
     var lastTakenDate: Date?
     var todayStatus: MedicationStatus = .pending
+    // Store daily history as [dateString: status]
+    var dailyHistory: [String: String] = [:]
+
+    // Get status for a specific date
+    func statusFor(date: Date) -> MedicationStatus {
+        let dateStr = Self.dateKey(for: date)
+        if let statusStr = dailyHistory[dateStr] {
+            return MedicationStatus(rawValue: statusStr) ?? .pending
+        }
+        // For today, use todayStatus
+        if Calendar.current.isDateInToday(date) {
+            return todayStatus
+        }
+        return .pending
+    }
+
+    static func dateKey(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
 }
 
 enum MedicationStatus: String, Codable {

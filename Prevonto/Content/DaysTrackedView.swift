@@ -18,6 +18,9 @@ struct DaysTrackedView: View {
     @State private var todayTrackedItems: [String] = []
     @State private var trackedToday = false
 
+    // Local repositories to check local data
+    private let moodRepository = LocalMoodRepository()
+    private let weightRepository = LocalWeightRepository()
     private let calendar = Calendar.current
 
     var body: some View {
@@ -288,79 +291,128 @@ struct DaysTrackedView: View {
     private func loadTrackedDays() {
         isLoading = true
 
+        // First, load local data (always available)
+        var dates: Set<Date> = []
+        var todayItems: [String] = []
+        let today = calendar.startOfDay(for: Date())
+        var trackedTypes: [String] = []
+
+        // Load local mood entries
+        let moodEntries = moodRepository.fetchEntries()
+        for entry in moodEntries {
+            let dayStart = calendar.startOfDay(for: entry.date)
+            dates.insert(dayStart)
+            if calendar.isDate(dayStart, inSameDayAs: today) {
+                if !todayItems.contains("Mood") {
+                    todayItems.append("Mood")
+                }
+            }
+        }
+        if !moodEntries.isEmpty {
+            trackedTypes.append("Mood")
+        }
+
+        // Load local weight entries
+        let weightEntries = weightRepository.fetchEntries()
+        for entry in weightEntries {
+            let dayStart = calendar.startOfDay(for: entry.date)
+            dates.insert(dayStart)
+            if calendar.isDate(dayStart, inSameDayAs: today) {
+                if !todayItems.contains("Weight") {
+                    todayItems.append("Weight")
+                }
+            }
+        }
+        if !weightEntries.isEmpty {
+            trackedTypes.append("Weight")
+        }
+
+        // Update UI with local data immediately
+        trackedDates = dates
+        totalDaysTracked = dates.count
+        todayTrackedItems = todayItems
+        trackedToday = dates.contains { calendar.isDate($0, inSameDayAs: today) }
+
+        if !trackedTypes.isEmpty {
+            mostTrackedMetrics = "Most tracked: \(trackedTypes.joined(separator: ", "))"
+        } else {
+            mostTrackedMetrics = "Start tracking to see your progress"
+        }
+
+        isLoading = false
+
+        // Also try to fetch from API to get any additional data
         Task {
             do {
-                // Get date range for current month
-                guard let monthInterval = calendar.dateInterval(of: .month, for: currentMonth) else {
-                    return
-                }
-
-                // Fetch metrics for the month
-                let metrics = try await HealthMetricsAPI.shared.getMetricHistory(
+                // Fetch metrics for the month from API
+                let apiMoodMetrics = try await HealthMetricsAPI.shared.getMetricHistory(
                     type: "energy_mood",
                     range: .month,
                     limit: 100
                 )
 
-                // Also check weight and other metrics
-                let weightMetrics = try await HealthMetricsAPI.shared.getMetricHistory(
+                let apiWeightMetrics = try await HealthMetricsAPI.shared.getMetricHistory(
                     type: "weight",
                     range: .month,
                     limit: 100
                 )
 
+                let bloodGlucoseMetrics = try await HealthMetricsAPI.shared.getMetricHistory(
+                    type: "blood_glucose",
+                    range: .month,
+                    limit: 100
+                )
+
                 await MainActor.run {
-                    var dates: Set<Date> = []
-                    var todayItems: [String] = []
-                    let today = calendar.startOfDay(for: Date())
-
-                    for metric in metrics {
+                    // Merge API data with local data
+                    for metric in apiMoodMetrics {
                         if let date = metric.date {
                             let dayStart = calendar.startOfDay(for: date)
                             dates.insert(dayStart)
-                            if calendar.isDate(dayStart, inSameDayAs: today) {
-                                if !todayItems.contains("Mood") {
-                                    todayItems.append("Mood")
-                                }
+                            if calendar.isDate(dayStart, inSameDayAs: today) && !todayItems.contains("Mood") {
+                                todayItems.append("Mood")
                             }
                         }
                     }
 
-                    for metric in weightMetrics {
+                    for metric in apiWeightMetrics {
                         if let date = metric.date {
                             let dayStart = calendar.startOfDay(for: date)
                             dates.insert(dayStart)
-                            if calendar.isDate(dayStart, inSameDayAs: today) {
-                                if !todayItems.contains("Weight") {
-                                    todayItems.append("Weight")
-                                }
+                            if calendar.isDate(dayStart, inSameDayAs: today) && !todayItems.contains("Weight") {
+                                todayItems.append("Weight")
                             }
                         }
                     }
+
+                    for metric in bloodGlucoseMetrics {
+                        if let date = metric.date {
+                            let dayStart = calendar.startOfDay(for: date)
+                            dates.insert(dayStart)
+                            if calendar.isDate(dayStart, inSameDayAs: today) && !todayItems.contains("Blood Glucose") {
+                                todayItems.append("Blood Glucose")
+                            }
+                        }
+                    }
+
+                    // Update tracked types
+                    var allTypes: [String] = []
+                    if !moodEntries.isEmpty || !apiMoodMetrics.isEmpty { allTypes.append("Mood") }
+                    if !weightEntries.isEmpty || !apiWeightMetrics.isEmpty { allTypes.append("Weight") }
+                    if !bloodGlucoseMetrics.isEmpty { allTypes.append("Blood Glucose") }
 
                     trackedDates = dates
                     totalDaysTracked = dates.count
                     todayTrackedItems = todayItems
                     trackedToday = dates.contains { calendar.isDate($0, inSameDayAs: today) }
 
-                    if !metrics.isEmpty || !weightMetrics.isEmpty {
-                        var trackedTypes: [String] = []
-                        if !metrics.isEmpty { trackedTypes.append("Mood") }
-                        if !weightMetrics.isEmpty { trackedTypes.append("Weight") }
-                        mostTrackedMetrics = "Most tracked: \(trackedTypes.joined(separator: ", "))"
-                    } else {
-                        mostTrackedMetrics = "Start tracking to see your progress"
+                    if !allTypes.isEmpty {
+                        mostTrackedMetrics = "Most tracked: \(allTypes.joined(separator: ", "))"
                     }
-
-                    isLoading = false
                 }
             } catch {
-                await MainActor.run {
-                    trackedDates = []
-                    totalDaysTracked = 0
-                    mostTrackedMetrics = "Connect to see tracked days"
-                    isLoading = false
-                }
+                // API failed but we already have local data, so just log it
+                print("⚠️ Failed to fetch API metrics for days tracked: \(error)")
             }
         }
     }

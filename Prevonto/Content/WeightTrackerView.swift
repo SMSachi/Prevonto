@@ -298,12 +298,19 @@ struct WeightTrackerView: View {
                 }
                 .frame(height: 150)
             } else {
-                // Real data from entries
-                WeightChartView(data: manager.entries.suffix(7).map { entry in
+                // Get most recent entries and sort by date ascending (oldest first for chart)
+                let recentEntries = Array(manager.entries.prefix(7)).sorted { $0.date < $1.date }
+                let chartData: [(String, Double)] = recentEntries.enumerated().map { index, entry in
                     let formatter = DateFormatter()
-                    formatter.dateFormat = "E"
+                    // Use index to make labels unique if same day
+                    if recentEntries.filter({ Calendar.current.isDate($0.date, inSameDayAs: entry.date) }).count > 1 {
+                        formatter.dateFormat = "h:mm a"
+                    } else {
+                        formatter.dateFormat = "E"
+                    }
                     return (formatter.string(from: entry.date), entry.weightLb)
-                })
+                }
+                WeightChartView(data: chartData)
             }
         }
         .padding()

@@ -438,28 +438,34 @@ struct BloodGlucoseView: View {
         isLoading = true
 
         Task {
+            let range: TimeRange = selectedTab == .day ? .day : selectedTab == .week ? .week : .month
+
+            // Load history first (this is the primary data)
             do {
-                let range: TimeRange = selectedTab == .day ? .day : selectedTab == .week ? .week : .month
                 let history = try await HealthMetricsAPI.shared.getMetricHistory(type: "blood_glucose", range: range)
-                let stats = try await AnalyticsAPI.shared.getStatistics(metricType: "blood_glucose", range: range)
 
                 await MainActor.run {
                     if !history.isEmpty {
                         hasData = true
-                        weeklyAverage = stats.average["value"] ?? 0
 
-                        // Convert to chart data
-                        chartData = history.enumerated().compactMap { index, record in
+                        // Convert to chart data - sort by date and ensure unique labels
+                        let sortedHistory = history.sorted { ($0.date ?? Date.distantPast) < ($1.date ?? Date.distantPast) }
+                        chartData = sortedHistory.enumerated().compactMap { index, record in
                             guard let value = record.value["value"] else { return nil }
                             let label = formatLabel(for: record.date, tab: selectedTab, index: index)
                             return GlucoseDataPoint(label: label, value: value)
                         }
 
-                        // Generate highlights based on data
-                        highlights = generateHighlights(stats: stats)
+                        // Calculate average from actual data
+                        let values = chartData.map { $0.value }
+                        weeklyAverage = values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
+
+                        // Generate highlights from real data
+                        highlights = generateHighlightsFromData(values: values)
                     } else {
                         hasData = false
                         chartData = []
+                        weeklyAverage = 0
                         highlights = []
                     }
                     isLoading = false
@@ -467,10 +473,54 @@ struct BloodGlucoseView: View {
             } catch {
                 await MainActor.run {
                     hasData = false
+                    chartData = []
+                    weeklyAverage = 0
+                    highlights = []
                     isLoading = false
                 }
             }
         }
+    }
+
+    private func generateHighlightsFromData(values: [Double]) -> [String] {
+        var result: [String] = []
+        guard !values.isEmpty else { return result }
+
+        let avg = values.reduce(0, +) / Double(values.count)
+        let minVal = values.min() ?? 0
+        let maxVal = values.max() ?? 0
+
+        // Range insight
+        if maxVal - minVal > 50 {
+            result.append("Your glucose varied by \(Int(maxVal - minVal)) mg/dL - consider consistent meal timing")
+        } else if maxVal - minVal < 20 {
+            result.append("Your glucose levels are stable - great consistency!")
+        }
+
+        // Average assessment
+        if avg < 100 {
+            result.append("Average of \(Int(avg)) mg/dL is within normal fasting range")
+        } else if avg < 125 {
+            result.append("Average of \(Int(avg)) mg/dL is slightly elevated - monitor closely")
+        } else {
+            result.append("Average of \(Int(avg)) mg/dL is high - consult your healthcare provider")
+        }
+
+        // Trend
+        if values.count >= 3 {
+            let firstHalf = Array(values.prefix(values.count / 2))
+            let secondHalf = Array(values.suffix(values.count / 2))
+            let firstAvg = firstHalf.reduce(0, +) / Double(firstHalf.count)
+            let secondAvg = secondHalf.reduce(0, +) / Double(secondHalf.count)
+
+            if secondAvg < firstAvg - 5 {
+                result.append("Your levels are trending downward")
+            } else if secondAvg > firstAvg + 5 {
+                result.append("Your levels are trending upward")
+            }
+        }
+
+        return result
     }
 
     private func formatLabel(for date: Date?, tab: GlucoseTimeTab, index: Int) -> String {

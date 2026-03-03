@@ -33,16 +33,23 @@ struct AIInsightsView: View {
                 } else if let error = errorMessage {
                     Spacer()
                     VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
+                        Image(systemName: "chart.bar.doc.horizontal")
                             .font(.largeTitle)
-                            .foregroundColor(.orange)
+                            .foregroundColor(Color(red: 0.70, green: 0.70, blue: 0.70))
                         Text(error)
-                            .foregroundColor(.gray)
+                            .font(.headline)
+                            .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
                             .multilineTextAlignment(.center)
-                        Button("Retry") {
+                        Text("Log health metrics to see patterns and trends")
+                            .font(.subheadline)
+                            .foregroundColor(Color(red: 0.70, green: 0.70, blue: 0.70))
+                            .multilineTextAlignment(.center)
+                        Button("Refresh") {
                             loadData()
                         }
-                        .foregroundColor(.blue)
+                        .font(.subheadline)
+                        .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+                        .padding(.top, 8)
                     }
                     .padding()
                     Spacer()
