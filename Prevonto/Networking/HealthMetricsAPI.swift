@@ -270,4 +270,60 @@ final class HealthMetricsAPI {
     func saveEnergyMood(energy: Int, mood: Int) async throws {
         try await saveMetric(type: "energy_mood", value: ["energy": Double(energy), "mood": Double(mood)])
     }
+
+    // MARK: - HealthKit Batch Sync
+
+    /// Sync HealthKit data to the backend in batch
+    func syncHealthKitData(_ samples: [HealthKitSyncSample]) async throws {
+        guard let token = AuthManager.shared.getToken() else {
+            print("⚠️ No token, skipping HealthKit sync")
+            throw APIError.noToken
+        }
+
+        guard !samples.isEmpty else {
+            print("⚠️ No samples to sync")
+            return
+        }
+
+        let url = baseURL.appendingPathComponent("api/healthkit/sync")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = HealthKitSyncRequest(metrics: samples)
+        request.httpBody = try JSONEncoder().encode(body)
+
+        print("📤 POST \(url.absoluteString) - \(samples.count) samples")
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        let bodyString = String(data: responseData, encoding: .utf8) ?? ""
+        print("📥 HealthKit sync response (\(http.statusCode)): \(bodyString)")
+
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError.httpError(code: http.statusCode, body: bodyString)
+        }
+
+        print("✅ HealthKit data synced: \(samples.count) samples")
+    }
+}
+
+// MARK: - HealthKit Sync Models
+
+struct HealthKitSyncSample: Codable {
+    let metric_type: String
+    let measured_at: String
+    let value: [String: Double]
+    let unit: String?
+    let source: String
+    let source_id: String?  // UUID for deduplication
+}
+
+struct HealthKitSyncRequest: Codable {
+    let metrics: [HealthKitSyncSample]
 }

@@ -177,6 +177,15 @@ struct DevicesView: View {
                             self.hasHealthData = (steps ?? 0) > 0
                         }
                     }
+                    // Sync HealthKit data to backend
+                    Task {
+                        do {
+                            try await self.healthKitManager.syncToBackend(daysBack: 7)
+                            print("✅ HealthKit data synced to backend")
+                        } catch {
+                            print("⚠️ HealthKit sync failed: \(error)")
+                        }
+                    }
                 }
             }
         }

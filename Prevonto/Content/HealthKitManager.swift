@@ -522,4 +522,61 @@ class HealthKitManager {
             }
         }
     }
+
+    // MARK: - Backend Sync
+
+    /// Sync all HealthKit data to the backend
+    func syncToBackend(daysBack: Int = 7) async throws {
+        let endDate = Date()
+        let startDate = Calendar.current.date(byAdding: .day, value: -daysBack, to: endDate)!
+
+        var allSamples: [HealthKitSyncSample] = []
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+
+        // Fetch heart rate
+        let heartRateSamples = try await fetchHeartRateSamples(from: startDate, to: endDate)
+        for sample in heartRateSamples {
+            allSamples.append(HealthKitSyncSample(
+                metric_type: "heart_rate",
+                measured_at: formatter.string(from: sample.timestamp),
+                value: ["bpm": sample.value],
+                unit: "bpm",
+                source: "healthkit",
+                source_id: UUID().uuidString
+            ))
+        }
+
+        // Fetch steps
+        let stepSamples = try await fetchStepSamples(from: startDate, to: endDate)
+        for sample in stepSamples {
+            allSamples.append(HealthKitSyncSample(
+                metric_type: "steps_activity",
+                measured_at: formatter.string(from: sample.timestamp),
+                value: ["steps": sample.value],
+                unit: "count",
+                source: "healthkit",
+                source_id: UUID().uuidString
+            ))
+        }
+
+        // Fetch active energy
+        let energySamples = try await fetchActiveEnergySamples(from: startDate, to: endDate)
+        for sample in energySamples {
+            allSamples.append(HealthKitSyncSample(
+                metric_type: "steps_activity",
+                measured_at: formatter.string(from: sample.timestamp),
+                value: ["calories": sample.value],
+                unit: "kcal",
+                source: "healthkit",
+                source_id: UUID().uuidString
+            ))
+        }
+
+        // Sync to backend
+        if !allSamples.isEmpty {
+            try await HealthMetricsAPI.shared.syncHealthKitData(allSamples)
+            print("✅ Synced \(allSamples.count) HealthKit samples to backend")
+        }
+    }
 }
