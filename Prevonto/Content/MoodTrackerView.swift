@@ -40,21 +40,11 @@ enum MoodType: String, CaseIterable {
 
     var color: Color {
         switch self {
-        case .verySad: return .red
-        case .sad: return .orange
-        case .neutral: return .yellow
-        case .happy: return .green
-        case .veryHappy: return .blue
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .verySad: return "😢"
-        case .sad: return "🙁"
-        case .neutral: return "😐"
-        case .happy: return "🙂"
-        case .veryHappy: return "😄"
+        case .verySad: return Color(red: 0.60, green: 0.25, blue: 0.30) // Dark maroon/red
+        case .sad: return Color(red: 0.65, green: 0.40, blue: 0.30) // Brown/rust
+        case .neutral: return Color(red: 0.80, green: 0.65, blue: 0.25) // Yellow/gold
+        case .happy: return Color(red: 0.85, green: 0.75, blue: 0.35) // Light yellow
+        case .veryHappy: return Color(red: 0.90, green: 0.80, blue: 0.40) // Lighter yellow
         }
     }
 
@@ -67,6 +57,112 @@ enum MoodType: String, CaseIterable {
         case .happy: return 7
         case .veryHappy: return 9
         }
+    }
+}
+
+// Custom Mood Icon View matching Figma design
+struct MoodIconView: View {
+    let mood: MoodType
+    var size: CGFloat = 50
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.2)
+                .fill(mood.color)
+                .frame(width: size, height: size)
+
+            // Face
+            VStack(spacing: size * 0.08) {
+                // Eyes
+                HStack(spacing: size * 0.25) {
+                    eyeView
+                    eyeView
+                }
+
+                // Mouth
+                mouthView
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var eyeView: some View {
+        switch mood {
+        case .verySad:
+            // Angry eyebrows with eyes
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: size * 0.15, height: size * 0.04)
+                    .rotationEffect(.degrees(-20))
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: size * 0.10, height: size * 0.10)
+                    .cornerRadius(size * 0.02)
+            }
+        case .sad:
+            // Sad eyebrows with eyes
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: size * 0.12, height: size * 0.03)
+                    .rotationEffect(.degrees(15))
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: size * 0.10, height: size * 0.10)
+                    .cornerRadius(size * 0.02)
+            }
+        default:
+            // Normal square eyes
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: size * 0.12, height: size * 0.12)
+                .cornerRadius(size * 0.02)
+        }
+    }
+
+    @ViewBuilder
+    private var mouthView: some View {
+        switch mood {
+        case .verySad, .sad:
+            // Frown - curved down
+            Arc(startAngle: .degrees(180), endAngle: .degrees(0), clockwise: true)
+                .stroke(Color.white, lineWidth: size * 0.06)
+                .frame(width: size * 0.35, height: size * 0.12)
+        case .neutral:
+            // Straight line
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: size * 0.35, height: size * 0.06)
+                .cornerRadius(size * 0.02)
+        case .happy:
+            // Smile - curved up
+            Arc(startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
+                .stroke(Color.white, lineWidth: size * 0.06)
+                .frame(width: size * 0.35, height: size * 0.12)
+        case .veryHappy:
+            // Big smile
+            Arc(startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
+                .stroke(Color.white, lineWidth: size * 0.08)
+                .frame(width: size * 0.40, height: size * 0.15)
+        }
+    }
+}
+
+// Arc shape for mouth curves
+struct Arc: Shape {
+    var startAngle: Angle
+    var endAngle: Angle
+    var clockwise: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY),
+                    radius: rect.width / 2,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    clockwise: clockwise)
+        return path
     }
 }
 
@@ -102,12 +198,18 @@ struct MoodEntryCard: View {
                 Text("How are you feeling today?")
                     .font(.headline)
 
-                Picker("", selection: $selectedMood) {
+                // Mood icon selection - vertical stack
+                VStack(spacing: 8) {
                     ForEach(MoodType.allCases, id: \.self) { mood in
-                        Text(mood.icon).tag(mood)
+                        Button(action: { selectedMood = mood }) {
+                            MoodIconView(mood: mood, size: 45)
+                                .opacity(selectedMood == mood ? 1.0 : 0.5)
+                                .scaleEffect(selectedMood == mood ? 1.1 : 1.0)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .pickerStyle(.wheel)
+                .padding(.vertical, 8)
 
                 Text("I'm feeling \(selectedMood.rawValue.lowercased()).")
                     .font(.subheadline)
@@ -361,8 +463,7 @@ struct MoodTrackerView: View {
                 let latestMood = manager.latestMood ?? .neutral
                 let avgEnergy = manager.averageEnergy
 
-                Text(latestMood.icon)
-                    .font(.largeTitle)
+                MoodIconView(mood: latestMood, size: 40)
                 Text(latestMood.rawValue)
                     .font(.headline)
                 Text("Avg energy level: \(String(format: "%.1f", avgEnergy))/10")

@@ -54,18 +54,26 @@ struct DevicesView: View {
     }
 
     private func checkHealthKitStatus() {
-        healthKitManager.requestAuthorization { success, error in
-            DispatchQueue.main.async {
-                self.isHealthKitAuthorized = success
-                if success {
-                    // Check if we actually have health data
-                    self.healthKitManager.fetchTodayStepCount { steps, _ in
-                        DispatchQueue.main.async {
-                            self.hasHealthData = (steps ?? 0) > 0
-                        }
-                    }
+        // First check if HealthKit is even available
+        guard HealthKitManager.isHealthKitAvailable else {
+            isHealthKitAuthorized = false
+            hasHealthData = false
+            return
+        }
+
+        // Check if we already have authorization
+        if healthKitManager.hasAnyAuthorization {
+            isHealthKitAuthorized = true
+            // Check if we actually have health data
+            healthKitManager.fetchTodayStepCount { steps, _ in
+                DispatchQueue.main.async {
+                    self.hasHealthData = (steps ?? 0) > 0
                 }
             }
+        } else {
+            // Not authorized yet - don't auto-request, let user tap button
+            isHealthKitAuthorized = false
+            hasHealthData = false
         }
     }
     

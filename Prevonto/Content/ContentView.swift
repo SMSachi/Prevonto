@@ -39,7 +39,7 @@ struct ContentView: View {
     @State private var adherenceProgress: Double = 0.0
 
     // Mood tracker data for dashboard
-    @State private var latestMoodIcon: String = ""
+    @State private var latestMoodType: MoodType = .neutral
     @State private var latestMoodLabel: String = ""
     @State private var latestEnergy: Int = 0
     @State private var hasMoodData: Bool = false
@@ -93,6 +93,7 @@ struct ContentView: View {
                 loadAnalyticsData()
                 loadAIData()
                 loadMoodData()
+                loadMedications()
             }
             .onChange(of: selectedTimePeriod) { _, _ in
                 loadAnalyticsData()
@@ -102,6 +103,7 @@ struct ContentView: View {
                     // Refresh data when app becomes active (returning from other views)
                     loadMoodData()
                     loadHealthData()
+                    loadMedications()
                 }
             }
         }
@@ -780,9 +782,8 @@ struct ContentView: View {
             NavigationLink(destination: MoodTrackerView()) {
                 if hasMoodData {
                     HStack(spacing: 20) {
-                        // Mood emoji
-                        Text(latestMoodIcon)
-                            .font(.system(size: 50))
+                        // Mood icon (custom view matching Figma)
+                        MoodIconView(mood: latestMoodType, size: 50)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Current Mood")
@@ -1026,47 +1027,62 @@ struct ContentView: View {
 
     // MARK: - Helper Functions
     private func loadHealthData() {
-        // Load health data from HealthKit
-        healthKitManager.requestAuthorization { success, error in
-            if success {
+        // Check if HealthKit is available
+        guard HealthKitManager.isHealthKitAvailable else {
+            authorizationStatus = "Not Available"
+            return
+        }
+
+        // Check if already authorized before requesting
+        if healthKitManager.hasAnyAuthorization {
+            authorizationStatus = "Authorized"
+            fetchHealthData()
+        } else {
+            // Request authorization
+            healthKitManager.requestAuthorization { success, error in
+                if success {
+                    DispatchQueue.main.async {
+                        self.authorizationStatus = "Authorized"
+                        self.fetchHealthData()
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.authorizationStatus = "Authorization Failed"
+                    }
+                }
+            }
+        }
+    }
+
+    private func fetchHealthData() {
+        healthKitManager.fetchTodayStepCount { steps, error in
+            if let steps = steps {
                 DispatchQueue.main.async {
-                    authorizationStatus = "Authorized"
+                    stepCount = steps
                 }
-                
-                healthKitManager.fetchTodayStepCount { steps, error in
-                    if let steps = steps {
-                        DispatchQueue.main.async {
-                            stepCount = steps
-                        }
-                    }
-                }
-                
-                healthKitManager.fetchTodayCalories { cals, error in
-                    if let cals = cals {
-                        DispatchQueue.main.async {
-                            calories = cals
-                        }
-                    }
-                }
-                
-                healthKitManager.fetchTodayDistance { distanceValue, error in
-                    if let distanceValue = distanceValue {
-                        DispatchQueue.main.async {
-                            distance = distanceValue
-                        }
-                    }
-                }
-                
-                healthKitManager.fetchTodayHeartRate { hr, error in
-                    if let hr = hr {
-                        DispatchQueue.main.async {
-                            heartRate = hr
-                        }
-                    }
-                }
-            } else {
+            }
+        }
+
+        healthKitManager.fetchTodayCalories { cals, error in
+            if let cals = cals {
                 DispatchQueue.main.async {
-                    authorizationStatus = "Authorization Failed"
+                    calories = cals
+                }
+            }
+        }
+
+        healthKitManager.fetchTodayDistance { distanceValue, error in
+            if let distanceValue = distanceValue {
+                DispatchQueue.main.async {
+                    distance = distanceValue
+                }
+            }
+        }
+
+        healthKitManager.fetchTodayHeartRate { hr, error in
+            if let hr = hr {
+                DispatchQueue.main.async {
+                    heartRate = hr
                 }
             }
         }
@@ -1197,31 +1213,68 @@ struct ContentView: View {
             hasMoodData = true
             latestEnergy = latestEntry.energy
 
-            // Map mood value to icon and label
+            // Map mood value to MoodType and label
             switch latestEntry.moodValue {
             case "Very Sad":
-                latestMoodIcon = "😢"
+                latestMoodType = .verySad
                 latestMoodLabel = "Very Sad"
             case "Sad":
-                latestMoodIcon = "🙁"
+                latestMoodType = .sad
                 latestMoodLabel = "Sad"
             case "Neutral":
-                latestMoodIcon = "😐"
+                latestMoodType = .neutral
                 latestMoodLabel = "Neutral"
             case "Happy":
-                latestMoodIcon = "🙂"
+                latestMoodType = .happy
                 latestMoodLabel = "Happy"
             case "Very Happy":
-                latestMoodIcon = "😄"
+                latestMoodType = .veryHappy
                 latestMoodLabel = "Very Happy"
             default:
-                latestMoodIcon = "😐"
+                latestMoodType = .neutral
                 latestMoodLabel = latestEntry.moodValue
             }
         } else {
             hasMoodData = false
         }
     }
+
+    private func loadMedications() {
+        // Load medications from UserDefaults (same storage as MedicationTrackerView)
+        guard let data = UserDefaults.standard.data(forKey: "trackedMedications") else {
+            medications = []
+            return
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            let tracked = try decoder.decode([TrackedMedicationDTO].self, from: data)
+            medications = tracked.map { med in
+                let instructions = [med.dosage, med.frequency]
+                    .compactMap { $0 }
+                    .joined(separator: " - ")
+                return Medication(
+                    name: med.name,
+                    instructions: instructions.isEmpty ? "As directed" : instructions,
+                    time: med.reminderTime ?? "No time set"
+                )
+            }
+        } catch {
+            print("Failed to load medications: \(error)")
+            medications = []
+        }
+    }
+}
+
+// DTO for decoding medications from MedicationTrackerView storage
+private struct TrackedMedicationDTO: Codable {
+    var id: UUID
+    var name: String
+    var dosage: String?
+    var frequency: String?
+    var reminderTime: String?
+    var lastTakenDate: Date?
+    var todayStatus: String?
 }
 
 // MARK: - TimePeriod to TimeRange Extension

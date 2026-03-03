@@ -11,6 +11,34 @@ struct HealthDataSample {
 class HealthKitManager {
     let healthStore = HKHealthStore()
 
+    // MARK: - Authorization Status
+
+    /// Check if HealthKit is available on this device
+    static var isHealthKitAvailable: Bool {
+        return HKHealthStore.isHealthDataAvailable()
+    }
+
+    /// Check current authorization status for a specific type
+    func authorizationStatus(for typeIdentifier: HKQuantityTypeIdentifier) -> HKAuthorizationStatus {
+        guard let type = HKObjectType.quantityType(forIdentifier: typeIdentifier) else {
+            return .notDetermined
+        }
+        return healthStore.authorizationStatus(for: type)
+    }
+
+    /// Check if we have at least some read permissions granted
+    var hasAnyAuthorization: Bool {
+        let typesToCheck: [HKQuantityTypeIdentifier] = [.stepCount, .heartRate, .activeEnergyBurned]
+        for identifier in typesToCheck {
+            let status = authorizationStatus(for: identifier)
+            // sharingAuthorized means we can at least read this type
+            if status == .sharingAuthorized {
+                return true
+            }
+        }
+        return false
+    }
+
     // MARK: - Authorization
 
     /// Request authorization for all health data types

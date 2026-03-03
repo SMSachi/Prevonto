@@ -12,6 +12,8 @@ class AuthManager: ObservableObject {
     private let accessTokenKey = "access_token"
     private let refreshTokenKey = "refresh_token"
     private let tokenExpiryKey = "token_expiry"
+    private let userNameKey = "user_full_name"
+    private let userEmailKey = "user_email"
 
     private var refreshTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -62,6 +64,7 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: accessTokenKey)
         UserDefaults.standard.removeObject(forKey: refreshTokenKey)
         UserDefaults.standard.removeObject(forKey: tokenExpiryKey)
+        clearUserProfile()
         print("🚪 Tokens cleared")
     }
 
@@ -76,6 +79,30 @@ class AuthManager: ObservableObject {
 
     func getRefreshToken() -> String? {
         return UserDefaults.standard.string(forKey: refreshTokenKey)
+    }
+
+    // MARK: - User Profile Storage
+
+    func saveUserProfile(fullName: String?, email: String?) {
+        if let fullName = fullName {
+            UserDefaults.standard.set(fullName, forKey: userNameKey)
+        }
+        if let email = email {
+            UserDefaults.standard.set(email, forKey: userEmailKey)
+        }
+    }
+
+    func getUserFullName() -> String? {
+        return UserDefaults.standard.string(forKey: userNameKey)
+    }
+
+    func getUserEmail() -> String? {
+        return UserDefaults.standard.string(forKey: userEmailKey)
+    }
+
+    func clearUserProfile() {
+        UserDefaults.standard.removeObject(forKey: userNameKey)
+        UserDefaults.standard.removeObject(forKey: userEmailKey)
     }
 
     // MARK: - Token Refresh
@@ -173,6 +200,20 @@ class AuthManager: ObservableObject {
             refreshToken: response.refresh_token,
             expiresIn: response.expires_in
         )
+        // Save email locally
+        saveUserProfile(fullName: nil, email: email)
+        // Try to fetch full profile from API
+        await fetchAndSaveProfile()
+    }
+
+    @MainActor
+    func fetchAndSaveProfile() async {
+        do {
+            let profile = try await SettingsAPI.shared.getProfile()
+            saveUserProfile(fullName: profile.full_name, email: profile.email)
+        } catch {
+            print("⚠️ Failed to fetch profile: \(error)")
+        }
     }
 
     @MainActor
@@ -183,6 +224,8 @@ class AuthManager: ObservableObject {
             refreshToken: response.refresh_token,
             expiresIn: response.expires_in
         )
+        // Save user profile locally for Settings display
+        saveUserProfile(fullName: fullName, email: email)
     }
 
     @MainActor

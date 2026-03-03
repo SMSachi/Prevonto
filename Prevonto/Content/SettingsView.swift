@@ -182,22 +182,34 @@ struct SettingsView: View {
     private func loadProfile() {
         isLoadingProfile = true
 
+        // First, load from local storage (AuthManager) for immediate display
+        if let localName = AuthManager.shared.getUserFullName(), !localName.isEmpty {
+            userName = localName
+        }
+        if let localEmail = AuthManager.shared.getUserEmail(), !localEmail.isEmpty {
+            userEmail = localEmail
+        }
+
+        // Then try to fetch from API for latest data
         Task {
             do {
                 let profile = try await SettingsAPI.shared.getProfile()
                 await MainActor.run {
                     if let name = profile.full_name, !name.isEmpty {
                         userName = name
+                        // Update local storage with latest from API
+                        AuthManager.shared.saveUserProfile(fullName: name, email: nil)
                     }
                     if let email = profile.email, !email.isEmpty {
                         userEmail = email
+                        AuthManager.shared.saveUserProfile(fullName: nil, email: email)
                     }
                     isLoadingProfile = false
                 }
             } catch {
                 await MainActor.run {
                     isLoadingProfile = false
-                    // Keep default placeholder values on error
+                    // Local data already loaded above, so user sees their info
                 }
             }
         }
