@@ -4,18 +4,6 @@ import SwiftUI
 
 // Shared state manager for notification settings
 class NotificationSettings: ObservableObject {
-    @Published var pushNotifications: Bool = true {
-        didSet {
-            UserDefaults.standard.set(pushNotifications, forKey: "pushNotifications")
-            saveToAPI()
-        }
-    }
-    @Published var emailNotifications: Bool = true {
-        didSet {
-            UserDefaults.standard.set(emailNotifications, forKey: "emailNotifications")
-            saveToAPI()
-        }
-    }
     @Published var dailySummary: Bool = true {
         didSet {
             UserDefaults.standard.set(dailySummary, forKey: "dailySummary")
@@ -28,35 +16,60 @@ class NotificationSettings: ObservableObject {
             saveToAPI()
         }
     }
+
+    // Body Metrics toggles - all editable
+    @Published var bodyMetrics: Bool = true {
+        didSet { UserDefaults.standard.set(bodyMetrics, forKey: "showBodyMetrics") }
+    }
+    @Published var bloodGlucose: Bool = true {
+        didSet { UserDefaults.standard.set(bloodGlucose, forKey: "showBloodGlucose") }
+    }
+    @Published var spo2: Bool = true {
+        didSet { UserDefaults.standard.set(spo2, forKey: "showSpO2") }
+    }
     @Published var heartRate: Bool = true {
         didSet { UserDefaults.standard.set(heartRate, forKey: "showHeartRate") }
+    }
+    @Published var mood: Bool = true {
+        didSet { UserDefaults.standard.set(mood, forKey: "showMood") }
+    }
+    @Published var weight: Bool = true {
+        didSet { UserDefaults.standard.set(weight, forKey: "showWeight") }
     }
     @Published var stepsAndActivity: Bool = true {
         didSet { UserDefaults.standard.set(stepsAndActivity, forKey: "showStepsActivity") }
     }
 
+    // Trackers toggles - editable and ON by default
+    @Published var trackers: Bool = true {
+        didSet { UserDefaults.standard.set(trackers, forKey: "trackersEnabled") }
+    }
+    @Published var medication: Bool = true {
+        didSet { UserDefaults.standard.set(medication, forKey: "medicationEnabled") }
+    }
+
     // Loading state
     @Published var isLoading: Bool = false
-
-    // Read-only toggles (grayed out)
-    let bodyMetrics: Bool = false
-    let bloodGlucose: Bool = false
-    let spo2: Bool = false
-    let mood: Bool = false
-    let weight: Bool = false
-    let trackers: Bool = false
-    let medication: Bool = false
 
     private var isSaving = false
 
     init() {
-        // Load saved settings from UserDefaults first
-        pushNotifications = UserDefaults.standard.object(forKey: "pushNotifications") as? Bool ?? true
-        emailNotifications = UserDefaults.standard.object(forKey: "emailNotifications") as? Bool ?? true
+        // Load saved settings from UserDefaults - trackers and medication default to true
         dailySummary = UserDefaults.standard.object(forKey: "dailySummary") as? Bool ?? true
         anomalyAlerts = UserDefaults.standard.object(forKey: "anomalyAlerts") as? Bool ?? true
+
+        // Body metrics - all default to true
+        bodyMetrics = UserDefaults.standard.object(forKey: "showBodyMetrics") as? Bool ?? true
+        bloodGlucose = UserDefaults.standard.object(forKey: "showBloodGlucose") as? Bool ?? true
+        spo2 = UserDefaults.standard.object(forKey: "showSpO2") as? Bool ?? true
         heartRate = UserDefaults.standard.object(forKey: "showHeartRate") as? Bool ?? true
+        mood = UserDefaults.standard.object(forKey: "showMood") as? Bool ?? true
+        weight = UserDefaults.standard.object(forKey: "showWeight") as? Bool ?? true
         stepsAndActivity = UserDefaults.standard.object(forKey: "showStepsActivity") as? Bool ?? true
+
+        // Trackers - default to true (ON)
+        trackers = UserDefaults.standard.object(forKey: "trackersEnabled") as? Bool ?? true
+        medication = UserDefaults.standard.object(forKey: "medicationEnabled") as? Bool ?? true
     }
 
     func loadFromAPI() {
@@ -67,12 +80,6 @@ class NotificationSettings: ObservableObject {
                 await MainActor.run {
                     // Temporarily disable saving while updating from API
                     isSaving = true
-                    if let push = settings.push_notifications_enabled {
-                        pushNotifications = push
-                    }
-                    if let email = settings.email_notifications_enabled {
-                        emailNotifications = email
-                    }
                     if let daily = settings.daily_summary_enabled {
                         dailySummary = daily
                     }
@@ -96,8 +103,8 @@ class NotificationSettings: ObservableObject {
         Task {
             do {
                 try await SettingsAPI.shared.updateNotifications(
-                    email: emailNotifications,
-                    push: pushNotifications,
+                    email: false,
+                    push: true,
                     dailySummary: dailySummary,
                     anomalyAlerts: anomalyAlerts
                 )
@@ -183,7 +190,7 @@ struct NotificationsView: View {
         }
     }
     
-    // MARK: - Push Notifications Section
+    // MARK: - Notification Preferences Section
     var pushNotificationsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Notification Preferences")
@@ -193,22 +200,6 @@ struct NotificationsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 0) {
-                NotificationToggleRow(
-                    title: "Push Notifications",
-                    isOn: $settings.pushNotifications,
-                    isEnabled: true
-                )
-
-                Divider().padding(.leading, 16)
-
-                NotificationToggleRow(
-                    title: "Email Notifications",
-                    isOn: $settings.emailNotifications,
-                    isEnabled: true
-                )
-
-                Divider().padding(.leading, 16)
-
                 NotificationToggleRow(
                     title: "Daily Summary",
                     isOn: $settings.dailySummary,
@@ -245,56 +236,56 @@ struct NotificationsView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
                 .frame(maxWidth: .infinity, alignment: .leading)
-            
+
             VStack(spacing: 0) {
                 NotificationToggleRow(
                     title: "Body Metrics",
-                    isOn: .constant(settings.bodyMetrics),
-                    isEnabled: false
+                    isOn: $settings.bodyMetrics,
+                    isEnabled: true
                 )
-                
-                Divider().padding(.leading, 0)
-                
+
+                Divider().padding(.leading, 16)
+
                 NotificationToggleRow(
                     title: "Blood Glucose",
-                    isOn: .constant(settings.bloodGlucose),
-                    isEnabled: false
+                    isOn: $settings.bloodGlucose,
+                    isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "SpO2",
-                    isOn: .constant(settings.spo2),
-                    isEnabled: false
+                    isOn: $settings.spo2,
+                    isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "Heart Rate",
                     isOn: $settings.heartRate,
                     isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "Mood",
-                    isOn: .constant(settings.mood),
-                    isEnabled: false
+                    isOn: $settings.mood,
+                    isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "Weight",
-                    isOn: .constant(settings.weight),
-                    isEnabled: false
+                    isOn: $settings.weight,
+                    isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "Steps & Activity",
                     isOn: $settings.stepsAndActivity,
@@ -315,20 +306,20 @@ struct NotificationsView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
                 .frame(maxWidth: .infinity, alignment: .leading)
-            
+
             VStack(spacing: 0) {
                 NotificationToggleRow(
                     title: "Trackers",
-                    isOn: .constant(settings.trackers),
-                    isEnabled: false
+                    isOn: $settings.trackers,
+                    isEnabled: true
                 )
-                
+
                 Divider().padding(.leading, 16)
-                
+
                 NotificationToggleRow(
                     title: "Medication",
-                    isOn: .constant(settings.medication),
-                    isEnabled: false
+                    isOn: $settings.medication,
+                    isEnabled: true
                 )
             }
             .background(Color.white)

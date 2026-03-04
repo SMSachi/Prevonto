@@ -429,7 +429,7 @@ struct MedicationTrackerView: View {
 
     private func markMedicationStatus(_ medication: TrackedMedication, status: MedicationStatus) {
         if let index = medications.firstIndex(where: { $0.id == medication.id }) {
-            medications[index].todayStatus = status
+            medications[index].todayStatus = status.rawValue
             if status == .taken {
                 medications[index].lastTakenDate = Date()
             }
@@ -460,7 +460,7 @@ struct DailyMedicationCard: View {
                     .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.60))
             }
 
-            if medication.todayStatus == .pending {
+            if medication.status == .pending {
                 HStack(spacing: 12) {
                     Button(action: onTaken) {
                         Text("Taken")
@@ -488,11 +488,11 @@ struct DailyMedicationCard: View {
                 }
             } else {
                 HStack {
-                    Image(systemName: medication.todayStatus == .taken ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundColor(medication.todayStatus == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
-                    Text(medication.todayStatus == .taken ? "Taken" : "Skipped")
+                    Image(systemName: medication.status == .taken ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundColor(medication.status == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
+                    Text(medication.status == .taken ? "Taken" : "Skipped")
                         .font(.custom("Noto Sans", size: 14))
-                        .foregroundColor(medication.todayStatus == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
+                        .foregroundColor(medication.status == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
                 }
             }
         }
@@ -657,7 +657,7 @@ struct AddMedicationSheet: View {
             frequency: frequency,
             reminderTime: timeString,
             lastTakenDate: nil,
-            todayStatus: .pending
+            todayStatus: "pending"
         )
         onSave(medication)
     }
@@ -682,11 +682,11 @@ struct TrackedMedication: Identifiable, Codable {
     var frequency: String?
     var reminderTime: String?
     var lastTakenDate: Date?
-    var todayStatus: MedicationStatus = .pending
+    var todayStatus: String = "pending"  // Store as string for compatibility
     // Store daily history as [dateString: status]
     var dailyHistory: [String: String] = [:]
 
-    // Get status for a specific date
+    // Get status enum for a specific date
     func statusFor(date: Date) -> MedicationStatus {
         let dateStr = Self.dateKey(for: date)
         if let statusStr = dailyHistory[dateStr] {
@@ -694,9 +694,14 @@ struct TrackedMedication: Identifiable, Codable {
         }
         // For today, use todayStatus
         if Calendar.current.isDateInToday(date) {
-            return todayStatus
+            return MedicationStatus(rawValue: todayStatus) ?? .pending
         }
         return .pending
+    }
+
+    // Get current status as enum
+    var status: MedicationStatus {
+        MedicationStatus(rawValue: todayStatus) ?? .pending
     }
 
     static func dateKey(for date: Date) -> String {

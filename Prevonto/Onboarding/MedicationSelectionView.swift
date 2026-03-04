@@ -193,22 +193,8 @@ struct MedicationSelectionView: View {
     }
 
     private func saveToLocalStorage() {
-        // Create TrackedMedication objects for local storage
-        let trackedMedications = selectedMeds.map { medName -> [String: Any] in
-            return [
-                "id": UUID().uuidString,
-                "name": medName,
-                "dosage": NSNull(),
-                "frequency": "Daily",
-                "reminderTime": NSNull(),
-                "lastTakenDate": NSNull(),
-                "todayStatus": "pending",
-                "dailyHistory": [String: String]()
-            ]
-        }
-
-        // Convert to the format expected by MedicationTrackerView
-        struct LocalMedication: Codable {
+        // Use same structure as TrackedMedication in MedicationTrackerView
+        struct SavedMedication: Codable {
             var id: UUID
             var name: String
             var dosage: String?
@@ -219,8 +205,8 @@ struct MedicationSelectionView: View {
             var dailyHistory: [String: String]
         }
 
-        let localMeds = selectedMeds.map { medName in
-            LocalMedication(
+        let savedMeds = selectedMeds.map { medName in
+            SavedMedication(
                 id: UUID(),
                 name: medName,
                 dosage: nil,
@@ -232,7 +218,7 @@ struct MedicationSelectionView: View {
             )
         }
 
-        if let encoded = try? JSONEncoder().encode(localMeds) {
+        if let encoded = try? JSONEncoder().encode(savedMeds) {
             UserDefaults.standard.set(encoded, forKey: "trackedMedications")
             print("✅ Saved \(selectedMeds.count) medications to local storage")
         }
