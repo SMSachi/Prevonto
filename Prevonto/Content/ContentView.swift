@@ -614,34 +614,51 @@ struct ContentView: View {
                     .font(.custom("Noto Sans", size: 14))
                     .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
             }
-            
+
             Spacer()
-            
-            // Medication Skipped and Medication Taken buttons
-            HStack(spacing: 8) {
-                Button("Skipped") {
-                    // Skip action
+
+            // Show status or action buttons
+            if medication.status == .pending {
+                // Medication Skipped and Medication Taken buttons
+                HStack(spacing: 8) {
+                    Button("Skipped") {
+                        updateMedicationStatus(medicationId: medication.id, status: "skipped")
+                    }
+                    .font(.custom("Noto Sans", size: 14))
+                    .frame(width: 60)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(red: 0.690, green: 0.698, blue: 0.764), lineWidth: 1)
+                    )
+                    .foregroundColor(Color(red: 0.690, green: 0.698, blue: 0.764))
+                    .cornerRadius(8)
+
+                    Button("Taken") {
+                        updateMedicationStatus(medicationId: medication.id, status: "taken")
+                    }
+                    .font(.custom("Noto Sans", size: 14))
+                    .frame(width: 60)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(red: 0.02, green: 0.33, blue: 0.18))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
                 }
-                .font(.custom("Noto Sans", size: 14))
-                .frame(width: 60)
+            } else {
+                // Show completed status
+                HStack(spacing: 6) {
+                    Image(systemName: medication.status == .taken ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundColor(medication.status == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
+                    Text(medication.status == .taken ? "Taken" : "Skipped")
+                        .font(.custom("Noto Sans", size: 14))
+                        .fontWeight(.medium)
+                        .foregroundColor(medication.status == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37) : .orange)
+                }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(red: 0.690, green: 0.698, blue: 0.764), lineWidth: 1)
-                )
-                .foregroundColor(Color(red: 0.690, green: 0.698, blue: 0.764))
-                .cornerRadius(8)
-                
-                Button("Taken") {
-                    // Taken action
-                }
-                .font(.custom("Noto Sans", size: 14))
-                .frame(width: 60)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(red: 0.02, green: 0.33, blue: 0.18))
-                .foregroundColor(.white)
+                .background(medication.status == .taken ? Color(red: 0.36, green: 0.55, blue: 0.37).opacity(0.1) : Color.orange.opacity(0.1))
                 .cornerRadius(8)
             }
         }
@@ -1256,15 +1273,53 @@ struct ContentView: View {
                 let instructions = [med.dosage, med.frequency]
                     .compactMap { $0 }
                     .joined(separator: " - ")
+
+                let status: Medication.MedicationDisplayStatus
+                switch med.todayStatus {
+                case "taken": status = .taken
+                case "skipped": status = .skipped
+                default: status = .pending
+                }
+
                 return Medication(
+                    id: med.id,
                     name: med.name,
                     instructions: instructions.isEmpty ? "As directed" : instructions,
-                    time: med.reminderTime ?? "No time set"
+                    time: med.reminderTime ?? "No time set",
+                    status: status
                 )
             }
         } catch {
             print("Failed to load medications: \(error)")
             medications = []
+        }
+    }
+
+    private func updateMedicationStatus(medicationId: UUID, status: String) {
+        guard var data = UserDefaults.standard.data(forKey: "trackedMedications") else { return }
+
+        do {
+            var tracked = try JSONDecoder().decode([TrackedMedicationDTO].self, from: data)
+            if let index = tracked.firstIndex(where: { $0.id == medicationId }) {
+                tracked[index].todayStatus = status
+                if status == "taken" {
+                    tracked[index].lastTakenDate = Date()
+                }
+                // Also update daily history
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                let dateKey = dateFormatter.string(from: Date())
+                if tracked[index].dailyHistory == nil {
+                    tracked[index].dailyHistory = [:]
+                }
+                tracked[index].dailyHistory?[dateKey] = status
+
+                let encoded = try JSONEncoder().encode(tracked)
+                UserDefaults.standard.set(encoded, forKey: "trackedMedications")
+                loadMedications() // Reload to update UI
+            }
+        } catch {
+            print("Failed to update medication status: \(error)")
         }
     }
 }
@@ -1278,6 +1333,7 @@ private struct TrackedMedicationDTO: Codable {
     var reminderTime: String?
     var lastTakenDate: Date?
     var todayStatus: String?
+    var dailyHistory: [String: String]?
 }
 
 // MARK: - TimePeriod to TimeRange Extension
@@ -1413,10 +1469,15 @@ enum TimePeriod: String, CaseIterable {
 }
 
 struct Medication: Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let instructions: String
     let time: String
+    var status: MedicationDisplayStatus
+
+    enum MedicationDisplayStatus {
+        case pending, taken, skipped
+    }
 }
 
 // MARK: - Quick Actions Modal

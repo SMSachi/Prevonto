@@ -9,12 +9,17 @@ class AuthManager: ObservableObject {
     @Published var accessToken: String?
     @Published var isRefreshing: Bool = false
     @Published var authError: String?
+    @Published var isNewRegistration: Bool = false  // Track if user just signed up
 
     private let accessTokenKey = "access_token"
     private let refreshTokenKey = "refresh_token"
     private let tokenExpiryKey = "token_expiry"
     private let userNameKey = "user_full_name"
     private let userEmailKey = "user_email"
+    private let userGenderKey = "user_gender"
+    private let userWeightKey = "user_weight"
+    private let userWeightUnitKey = "user_weight_unit"
+    private let userAgeKey = "user_age"
 
     private var refreshTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -59,6 +64,7 @@ class AuthManager: ObservableObject {
         self.accessToken = nil
         self.isLoggedIn = false
         self.authError = nil
+        self.isNewRegistration = false
         refreshTask?.cancel()
         refreshTask = nil
 
@@ -106,6 +112,45 @@ class AuthManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: userEmailKey)
     }
 
+    // MARK: - Onboarding Data Storage
+
+    func saveOnboardingGender(_ gender: String) {
+        UserDefaults.standard.set(gender, forKey: userGenderKey)
+    }
+
+    func getOnboardingGender() -> String? {
+        return UserDefaults.standard.string(forKey: userGenderKey)
+    }
+
+    func saveOnboardingWeight(_ weight: Double, unit: String) {
+        UserDefaults.standard.set(weight, forKey: userWeightKey)
+        UserDefaults.standard.set(unit, forKey: userWeightUnitKey)
+    }
+
+    func getOnboardingWeight() -> (weight: Double, unit: String)? {
+        let weight = UserDefaults.standard.double(forKey: userWeightKey)
+        guard weight > 0, let unit = UserDefaults.standard.string(forKey: userWeightUnitKey) else {
+            return nil
+        }
+        return (weight, unit)
+    }
+
+    func saveOnboardingAge(_ age: Int) {
+        UserDefaults.standard.set(age, forKey: userAgeKey)
+    }
+
+    func getOnboardingAge() -> Int? {
+        let age = UserDefaults.standard.integer(forKey: userAgeKey)
+        return age > 0 ? age : nil
+    }
+
+    func clearOnboardingData() {
+        UserDefaults.standard.removeObject(forKey: userGenderKey)
+        UserDefaults.standard.removeObject(forKey: userWeightKey)
+        UserDefaults.standard.removeObject(forKey: userWeightUnitKey)
+        UserDefaults.standard.removeObject(forKey: userAgeKey)
+    }
+
     /// Clear all local app data when switching accounts
     func clearAllLocalData() {
         // Clear profile
@@ -134,6 +179,7 @@ class AuthManager: ObservableObject {
         // Clear onboarding data
         UserDefaults.standard.removeObject(forKey: "onboardingData")
         UserDefaults.standard.removeObject(forKey: "onboarding_completed")
+        clearOnboardingData()
 
         // Clear any pending notifications
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
@@ -230,6 +276,7 @@ class AuthManager: ObservableObject {
 
     @MainActor
     func login(email: String, password: String) async throws {
+        isNewRegistration = false  // Existing user logging in
         let response = try await AuthAPI.shared.login(email: email, password: password)
         saveTokens(
             accessToken: response.access_token,
@@ -254,6 +301,7 @@ class AuthManager: ObservableObject {
 
     @MainActor
     func register(email: String, password: String, fullName: String) async throws {
+        isNewRegistration = true  // New user signing up - needs onboarding
         let response = try await AuthAPI.shared.register(email: email, password: password, fullName: fullName)
         saveTokens(
             accessToken: response.access_token,

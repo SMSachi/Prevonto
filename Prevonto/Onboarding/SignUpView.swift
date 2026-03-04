@@ -198,6 +198,25 @@ struct SignUpView: View {
             showValidationMessage = true
             return
         }
+
+        // Backend requires: digit, uppercase, lowercase
+        if !password.contains(where: { $0.isNumber }) {
+            errorMessage = "Password must contain at least one number."
+            showValidationMessage = true
+            return
+        }
+
+        if !password.contains(where: { $0.isUppercase }) {
+            errorMessage = "Password must contain at least one uppercase letter."
+            showValidationMessage = true
+            return
+        }
+
+        if !password.contains(where: { $0.isLowercase }) {
+            errorMessage = "Password must contain at least one lowercase letter."
+            showValidationMessage = true
+            return
+        }
         
         if !acceptedTerms {
             errorMessage = "Please accept the terms and conditions."
@@ -233,10 +252,18 @@ struct SignUpView: View {
                     if case .httpError(let code, let body) = error {
                         if code == 400 && (body.contains("already") || body.contains("registered")) {
                             errorMessage = "Email already registered. Please log in instead."
-                        } else if code == 400 && body.contains("password") {
-                            errorMessage = "Password must be at least 8 characters."
+                        } else if code == 422 && body.contains("digit") {
+                            errorMessage = "Password must contain at least one number."
+                        } else if code == 422 && body.contains("uppercase") {
+                            errorMessage = "Password must contain at least one uppercase letter."
+                        } else if code == 422 && body.contains("lowercase") {
+                            errorMessage = "Password must contain at least one lowercase letter."
+                        } else if code == 422 && body.contains("password") {
+                            errorMessage = "Password must be 8+ chars with uppercase, lowercase & number."
+                        } else if code == 422 {
+                            errorMessage = "Invalid input. Check email format and password requirements."
                         } else if code == 400 {
-                            errorMessage = "Invalid input. Check email and password (8+ chars)."
+                            errorMessage = "Invalid input. Check email and password."
                         } else {
                             errorMessage = "Registration failed. Please try again."
                         }

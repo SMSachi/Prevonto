@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct EatingHabitSelectionView: View {
-    @State private var selectedHabit: String? = "Mostly Vegetarian"
+    @State private var selectedHabit: String? = nil
     @State private var isSaving = false
 
     let next: () -> Void
@@ -11,51 +11,77 @@ struct EatingHabitSelectionView: View {
 
     struct HabitOption: Identifiable {
         let id = UUID()
-        let icon: String
+        let icon: String  // SF Symbol name
         let label: String
     }
 
     let habits: [HabitOption] = [
-        .init(icon: "🍎", label: "Balanced Diet"),
-        .init(icon: "🥕", label: "Mostly Vegetarian"),
-        .init(icon: "🍖", label: "Low Carb"),
-        .init(icon: "🌾", label: "Gluten Free"),
-        .init(icon: "🌱", label: "Vegan"),
-        .init(icon: "🥩", label: "Keto")
+        .init(icon: "leaf.circle.fill", label: "Balanced Diet"),
+        .init(icon: "carrot.fill", label: "Mostly Vegetarian"),
+        .init(icon: "fork.knife", label: "Low Carb"),
+        .init(icon: "leaf.arrow.triangle.circlepath", label: "Gluten Free"),
+        .init(icon: "leaf.fill", label: "Vegan"),
+        .init(icon: "flame.fill", label: "Keto")
     ]
 
     var body: some View {
         OnboardingStepWrapper(step: step, title: "What does your current\ndiet look like?") {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
-                ForEach(habits) { habit in
-                    Button(action: {
-                        selectedHabit = habit.label
-                    }) {
-                        HStack(alignment: .center, spacing: 12) {
-                            VStack(spacing: 4) {
-                                Text(habit.icon)
-                                    .font(.system(size: 26))
+            VStack(spacing: 16) {
+                // Main diet options in 2-column grid
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                    ForEach(habits) { habit in
+                        Button(action: {
+                            selectedHabit = habit.label
+                        }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: habit.icon)
+                                    .font(.system(size: 24))
+                                    .foregroundColor(selectedHabit == habit.label ? .white : Color(red: 0.39, green: 0.59, blue: 0.38))
                                 Text(habit.label)
                                     .font(.footnote)
                                     .multilineTextAlignment(.center)
                             }
-
-                            Spacer()
-
-                            if selectedHabit == habit.label {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Color(red: 0.01, green: 0.33, blue: 0.18))
-                            }
+                            .frame(maxWidth: .infinity, minHeight: 70)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(selectedHabit == habit.label ? Color(red: 0.39, green: 0.59, blue: 0.38) : Color.white)
+                            )
+                            .foregroundColor(selectedHabit == habit.label ? .white : .black)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(selectedHabit == habit.label ? Color.clear : Color.gray.opacity(0.2), lineWidth: 1)
+                            )
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity, minHeight: 80)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(selectedHabit == habit.label ? Color(red: 0.39, green: 0.59, blue: 0.38) : Color.white)
-                        )
-                        .foregroundColor(selectedHabit == habit.label ? .white : .black)
-                        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
                     }
+                }
+
+                // "Other" option - full width rectangle at bottom
+                Button(action: {
+                    selectedHabit = "Other"
+                }) {
+                    HStack {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 24))
+                            .foregroundColor(selectedHabit == "Other" ? .white : Color(red: 0.39, green: 0.59, blue: 0.38))
+                        Text("Other")
+                            .font(.subheadline)
+                        Spacer()
+                        if selectedHabit == "Other" {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(selectedHabit == "Other" ? Color(red: 0.39, green: 0.59, blue: 0.38) : Color.white)
+                    )
+                    .foregroundColor(selectedHabit == "Other" ? .white : .black)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(selectedHabit == "Other" ? Color.clear : Color.gray.opacity(0.2), lineWidth: 1)
+                    )
                 }
             }
 

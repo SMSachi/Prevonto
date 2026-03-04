@@ -1,5 +1,6 @@
 // Onboarding page 8 out of 9 prompts user for any and all medication they currently take
 import SwiftUI
+import UserNotifications
 
 struct MedicationSelectionView: View {
     @State private var selectedMeds: [String] = []
@@ -23,12 +24,18 @@ struct MedicationSelectionView: View {
         }
     }
 
+    // Check if user can add custom medication
+    var canAddCustomMedication: Bool {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && !selectedMeds.contains(trimmed) && !allMedications.contains(where: { $0.lowercased() == trimmed.lowercased() })
+    }
+
     var body: some View {
         OnboardingStepWrapper(step: step, title: "Which medications are\nyou currently taking?") {
             VStack(spacing: 16) {
-                // Search bar
-                HStack {
-                    TextField("Search", text: $searchQuery)
+                // Search bar with add button
+                HStack(spacing: 8) {
+                    TextField("Search or type medication name", text: $searchQuery)
                         .padding(12)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
@@ -42,6 +49,17 @@ struct MedicationSelectionView: View {
                                     .padding(.trailing, 12)
                             }
                         )
+
+                    // Add custom medication button
+                    if canAddCustomMedication {
+                        Button(action: {
+                            addCustomMedication()
+                        }) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(Color(red: 0.39, green: 0.59, blue: 0.38))
+                        }
+                    }
                 }
 
                 // Medication search result list
@@ -71,6 +89,12 @@ struct MedicationSelectionView: View {
                     }
                     .background(Color.gray.opacity(0.05))
                     .cornerRadius(12)
+                } else if canAddCustomMedication {
+                    // Show hint to add custom medication
+                    Text("Tap + to add \"\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))\"")
+                        .font(.footnote)
+                        .foregroundColor(.gray)
+                        .padding(.vertical, 8)
                 }
 
                 // Selected chips
@@ -136,8 +160,19 @@ struct MedicationSelectionView: View {
         }
     }
 
+    private func addCustomMedication() {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && !selectedMeds.contains(trimmed) {
+            selectedMeds.append(trimmed)
+            searchQuery = ""  // Clear search after adding
+        }
+    }
+
     private func saveAndContinue() {
         isSaving = true
+
+        // Save to local storage for dashboard display
+        saveToLocalStorage()
 
         Task {
             do {
@@ -154,6 +189,52 @@ struct MedicationSelectionView: View {
                     next()
                 }
             }
+        }
+    }
+
+    private func saveToLocalStorage() {
+        // Create TrackedMedication objects for local storage
+        let trackedMedications = selectedMeds.map { medName -> [String: Any] in
+            return [
+                "id": UUID().uuidString,
+                "name": medName,
+                "dosage": NSNull(),
+                "frequency": "Daily",
+                "reminderTime": NSNull(),
+                "lastTakenDate": NSNull(),
+                "todayStatus": "pending",
+                "dailyHistory": [String: String]()
+            ]
+        }
+
+        // Convert to the format expected by MedicationTrackerView
+        struct LocalMedication: Codable {
+            var id: UUID
+            var name: String
+            var dosage: String?
+            var frequency: String?
+            var reminderTime: String?
+            var lastTakenDate: Date?
+            var todayStatus: String
+            var dailyHistory: [String: String]
+        }
+
+        let localMeds = selectedMeds.map { medName in
+            LocalMedication(
+                id: UUID(),
+                name: medName,
+                dosage: nil,
+                frequency: "Daily",
+                reminderTime: nil,
+                lastTakenDate: nil,
+                todayStatus: "pending",
+                dailyHistory: [:]
+            )
+        }
+
+        if let encoded = try? JSONEncoder().encode(localMeds) {
+            UserDefaults.standard.set(encoded, forKey: "trackedMedications")
+            print("✅ Saved \(selectedMeds.count) medications to local storage")
         }
     }
 }

@@ -11,6 +11,11 @@ struct ProfileView: View {
     @State private var showingSaveAlert = false
     @State private var showingDatePicker = false
 
+    // Onboarding data (read-only display)
+    @State private var gender: String = ""
+    @State private var weight: String = ""
+    @State private var age: String = ""
+
     // Loading and error states
     @State private var isLoading = false
     @State private var isSaving = false
@@ -34,6 +39,9 @@ struct ProfileView: View {
 
                                 // Basic Details Section
                                 basicDetailsSection
+
+                                // Health Profile Section (from onboarding)
+                                healthProfileSection
 
                                 // Contact Details Section
                                 contactDetailsSection
@@ -90,14 +98,36 @@ struct ProfileView: View {
         isLoading = true
         errorMessage = nil
 
+        // First, load from local storage (immediate display)
+        if let localName = AuthManager.shared.getUserFullName(), !localName.isEmpty {
+            fullName = localName
+        }
+        if let localEmail = AuthManager.shared.getUserEmail(), !localEmail.isEmpty {
+            email = localEmail
+        }
+
+        // Load onboarding data from local storage
+        if let localGender = AuthManager.shared.getOnboardingGender() {
+            gender = localGender
+        }
+        if let weightData = AuthManager.shared.getOnboardingWeight() {
+            weight = "\(Int(weightData.weight)) \(weightData.unit)"
+        }
+        if let localAge = AuthManager.shared.getOnboardingAge() {
+            age = "\(localAge) years"
+        }
+
+        // Then fetch from API to get latest data
         Task {
             do {
                 let profile = try await SettingsAPI.shared.getProfile()
                 await MainActor.run {
-                    if let name = profile.full_name {
+                    if let name = profile.full_name, !name.isEmpty {
                         fullName = name
+                        // Update local storage with API data
+                        AuthManager.shared.saveUserProfile(fullName: name, email: nil)
                     }
-                    if let emailAddress = profile.email {
+                    if let emailAddress = profile.email, !emailAddress.isEmpty {
                         email = emailAddress
                     }
                     if let phone = profile.phone_number {
@@ -115,8 +145,32 @@ struct ProfileView: View {
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    // Keep default values on error
+                    // Keep local values on error
                 }
+            }
+
+            // Also try to fetch onboarding data from API
+            do {
+                let onboarding = try await OnboardingAPI.shared.getOnboarding()
+                await MainActor.run {
+                    if let apiGender = onboarding.gender, !apiGender.isEmpty {
+                        // Format gender for display (capitalize, replace underscores)
+                        gender = apiGender.replacingOccurrences(of: "_", with: " ").capitalized
+                        AuthManager.shared.saveOnboardingGender(gender)
+                    }
+                    if let apiWeight = onboarding.current_weight, apiWeight > 0 {
+                        let unit = onboarding.weight_unit ?? "lbs"
+                        weight = "\(Int(apiWeight)) \(unit)"
+                        AuthManager.shared.saveOnboardingWeight(apiWeight, unit: unit)
+                    }
+                    if let apiAge = onboarding.age, apiAge > 0 {
+                        age = "\(apiAge) years"
+                        AuthManager.shared.saveOnboardingAge(apiAge)
+                    }
+                }
+            } catch {
+                // Keep local values on error
+                print("⚠️ Failed to fetch onboarding data: \(error)")
             }
         }
     }
@@ -265,6 +319,34 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - Health Profile Section
+    var healthProfileSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Health Profile")
+                .font(.custom("Noto Sans", size: 18))
+                .fontWeight(.semibold)
+                .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
+
+            VStack(spacing: 12) {
+                if !gender.isEmpty {
+                    ProfileDisplayField(title: "Gender", value: gender)
+                }
+                if !weight.isEmpty {
+                    ProfileDisplayField(title: "Weight", value: weight)
+                }
+                if !age.isEmpty {
+                    ProfileDisplayField(title: "Age", value: age)
+                }
+                if gender.isEmpty && weight.isEmpty && age.isEmpty {
+                    Text("Complete onboarding to see your health profile")
+                        .font(.custom("Noto Sans", size: 14))
+                        .foregroundColor(.gray)
+                        .italic()
+                }
+            }
+        }
+    }
+
     // MARK: - Contact Details Section
     var contactDetailsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -272,7 +354,7 @@ struct ProfileView: View {
                 .font(.custom("Noto Sans", size: 18))
                 .fontWeight(.semibold)
                 .foregroundColor(Color(red: 0.36, green: 0.55, blue: 0.37))
-            
+
             VStack(spacing: 20) {
                 // Phone Number
                 ProfileInputField(
@@ -280,7 +362,7 @@ struct ProfileView: View {
                     text: $mobileNumber,
                     placeholder: "Enter your mobile number"
                 )
-                
+
                 // Email
                 ProfileInputField(
                     title: "Email",
@@ -339,14 +421,14 @@ struct ProfileInputField: View {
     let title: String
     @Binding var text: String
     let placeholder: String
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.custom("Noto Sans", size: 14))
                 .fontWeight(.medium)
                 .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
-            
+
             TextField(placeholder, text: $text)
                 .font(.custom("Noto Sans", size: 16))
                 .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
@@ -360,6 +442,29 @@ struct ProfileInputField: View {
                         .stroke(Color(red: 0.85, green: 0.85, blue: 0.85), lineWidth: 1)
                 )
         }
+    }
+}
+
+// MARK: - Profile Display Field Component (Read-only)
+struct ProfileDisplayField: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.custom("Noto Sans", size: 14))
+                .fontWeight(.medium)
+                .foregroundColor(Color(red: 0.404, green: 0.420, blue: 0.455))
+            Spacer()
+            Text(value)
+                .font(.custom("Noto Sans", size: 16))
+                .foregroundColor(Color(red: 0.18, green: 0.2, blue: 0.38))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(red: 0.97, green: 0.97, blue: 0.97))
+        .cornerRadius(8)
     }
 }
 

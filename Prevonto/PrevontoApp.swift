@@ -16,13 +16,19 @@ struct PrevontoApp: App {
 // Root view that switches between auth flow and main app based on login state
 struct RootView: View {
     @EnvironmentObject var authManager: AuthManager
-    @State private var hasCompletedOnboarding = false
 
     var body: some View {
         Group {
             if authManager.isLoggedIn {
-                // User is logged in - show main app (no back button to login)
-                ContentView()
+                if authManager.isNewRegistration {
+                    // New user just signed up - show onboarding
+                    NavigationStack {
+                        OnboardingFlowView()
+                    }
+                } else {
+                    // Existing user logged in - go straight to dashboard
+                    ContentView()
+                }
             } else {
                 // User is not logged in - show welcome/auth flow
                 NavigationStack {
@@ -31,7 +37,6 @@ struct RootView: View {
             }
         }
         .onAppear {
-            // Request HealthKit permissions on app launch if logged in
             if authManager.isLoggedIn {
                 requestHealthKitPermissions()
             }

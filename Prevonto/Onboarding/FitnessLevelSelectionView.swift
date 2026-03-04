@@ -17,8 +17,8 @@ struct FitnessLevelSelectionView: View {
     }
 
     let fitnessOptions: [FitnessOption] = [
-        .init(id: 1, title: "Just started", subtitle: nil, apiValue: "beginner"),
-        .init(id: 2, title: "Getting back into fitness", subtitle: nil, apiValue: "returning"),
+        .init(id: 1, title: "Not at all", subtitle: nil, apiValue: "none"),
+        .init(id: 2, title: "Just started", subtitle: nil, apiValue: "beginner"),
         .init(id: 3, title: "Fairly active", subtitle: nil, apiValue: "intermediate"),
         .init(id: 4, title: "Very active", subtitle: nil, apiValue: "advanced")
     ]

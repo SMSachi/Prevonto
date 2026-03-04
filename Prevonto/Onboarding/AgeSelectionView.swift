@@ -45,6 +45,9 @@ struct AgeSelectionView: View {
     private func saveAndContinue() {
         isSaving = true
 
+        // Save to local storage for profile display
+        AuthManager.shared.saveOnboardingAge(selectedAge)
+
         Task {
             do {
                 try await OnboardingAPI.shared.saveAge(selectedAge)

@@ -79,6 +79,10 @@ struct OnboardingFlowView: View {
             }
 
             await MainActor.run {
+                // Save locally so app knows to show dashboard
+                UserDefaults.standard.set(true, forKey: "onboarding_completed")
+                // Clear new registration flag so RootView shows dashboard
+                AuthManager.shared.isNewRegistration = false
                 isCompletingOnboarding = false
             }
         }

@@ -72,6 +72,9 @@ struct WeightSelectionView: View {
     private func saveAndContinue() {
         isSaving = true
 
+        // Save to local storage for profile display
+        AuthManager.shared.saveOnboardingWeight(Double(selectedWeight), unit: selectedUnit)
+
         Task {
             do {
                 try await OnboardingAPI.shared.saveWeight(Double(selectedWeight), unit: selectedUnit)

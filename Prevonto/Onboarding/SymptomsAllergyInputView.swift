@@ -2,89 +2,180 @@
 import SwiftUI
 
 struct SymptomsAllergyInputView: View {
-    @State private var selectedSymptoms: Set<String> = ["Fever"]
-    @State private var selectedAllergyCategory: String? = "Food"
-    @State private var showAllergyDetails = false
-    @State private var allergyDetails: Set<String> = ["Gluten"]
-    @State private var allergyDescription: String = ""
+    @State private var selectedSymptoms: Set<String> = []
+    @State private var allergyDetails: Set<String> = []
     @State private var isSaving = false
+    @State private var symptomSearchQuery: String = ""
+    @State private var allergySearchQuery: String = ""
+    @State private var customSymptoms: [String] = []
+    @State private var customAllergies: [String] = []
 
     let next: () -> Void
     let back: () -> Void
     let step: Int
 
     let commonSymptoms = ["Cough", "Fever", "Headache", "Flu", "Muscle fatigue", "Shortness of breath"]
-    let allergyCategories = ["Food", "Indoor", "Seasonal", "Drug", "Skin", "Other"]
-    let additionalAllergyTags = ["Dairy", "Gluten", "Soy", "Shellfish", "Nuts"]
+    let commonAllergies = ["Peanuts", "Tree nuts", "Milk", "Eggs", "Wheat", "Soy", "Fish", "Shellfish", "Sesame", "Penicillin", "Sulfa", "Aspirin", "Latex", "Pollen", "Dust mites", "Mold", "Pet dander", "Bee stings"]
+
+    // All symptoms including custom ones
+    var allSymptoms: [String] {
+        commonSymptoms + customSymptoms
+    }
+
+    // Filtered symptoms based on search
+    var filteredSymptoms: [String] {
+        if symptomSearchQuery.isEmpty {
+            return allSymptoms
+        }
+        return allSymptoms.filter { $0.lowercased().contains(symptomSearchQuery.lowercased()) }
+    }
+
+    // Check if can add custom symptom
+    var canAddCustomSymptom: Bool {
+        let trimmed = symptomSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && !allSymptoms.contains(where: { $0.lowercased() == trimmed.lowercased() })
+    }
+
+    // Filtered allergies based on search
+    var filteredAllergies: [String] {
+        let allAllergies = commonAllergies + customAllergies
+        if allergySearchQuery.isEmpty {
+            return allAllergies
+        }
+        return allAllergies.filter { $0.lowercased().contains(allergySearchQuery.lowercased()) }
+    }
+
+    // Check if can add custom allergy
+    var canAddCustomAllergy: Bool {
+        let trimmed = allergySearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allAllergies = commonAllergies + customAllergies
+        return !trimmed.isEmpty && !allAllergies.contains(where: { $0.lowercased() == trimmed.lowercased() })
+    }
 
     var body: some View {
         OnboardingStepWrapper(step: step, title: "Do you have any\nsymptoms or allergies?") {
-            VStack(alignment: .leading, spacing: 24) {
-                // Symptoms section
-                Text("Symptoms")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-
-                TagFlowLayout(tags: commonSymptoms.prefix(5).map { String($0) }, selection: $selectedSymptoms)
-
-                HStack {
-                    TagPill(label: "+4", selected: false, action: {})
-                    Spacer()
-                }
-
-                HStack {
-                    TextField("Search", text: .constant(""))
-                        .disabled(true)
-                        .padding(.vertical, 8)
-                        .padding(.leading, 12)
-                    Spacer()
-                    Image(systemName: "magnifyingglass")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Symptoms section
+                    Text("Symptoms")
+                        .font(.subheadline)
                         .foregroundColor(.gray)
-                        .padding(.trailing, 12)
-                }
-                .background(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3)))
-                .frame(height: 44)
 
-                // Allergy section
-                Text("Allergies")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                    // Symptom search bar with add button
+                    HStack(spacing: 8) {
+                        HStack {
+                            TextField("Search or add symptom", text: $symptomSearchQuery)
+                                .padding(.vertical, 8)
+                                .padding(.leading, 12)
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.gray)
+                                .padding(.trailing, 12)
+                        }
+                        .background(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3)))
+                        .frame(height: 44)
 
-                TagFlowLayout(tags: allergyCategories, selection: .init(
-                    get: { selectedAllergyCategory.map { [$0] } ?? [] },
-                    set: { selectedAllergyCategory = $0.first }
-                )) {
-                    if $0 == "Food" {
-                        showAllergyDetails = true
+                        if canAddCustomSymptom {
+                            Button(action: addCustomSymptom) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(Color(red: 0.39, green: 0.59, blue: 0.38))
+                            }
+                        }
                     }
-                }
 
-                Spacer()
-
-                Button {
-                    saveAndContinue()
-                } label: {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                            .cornerRadius(12)
-                    } else {
-                        Text("Next")
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                            .cornerRadius(12)
+                    // Show hint to add custom symptom
+                    if canAddCustomSymptom {
+                        Text("Tap + to add \"\(symptomSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines))\"")
+                            .font(.caption)
+                            .foregroundColor(.gray)
                     }
+
+                    // Symptom tags
+                    TagFlowLayout(tags: filteredSymptoms, selection: $selectedSymptoms)
+                        .frame(minHeight: 80)
+
+                    // Allergy section
+                    Text("Allergies")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .padding(.top, 8)
+
+                    // Allergy search bar with add button
+                    HStack(spacing: 8) {
+                        HStack {
+                            TextField("Search or add allergy", text: $allergySearchQuery)
+                                .padding(.vertical, 8)
+                                .padding(.leading, 12)
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.gray)
+                                .padding(.trailing, 12)
+                        }
+                        .background(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3)))
+                        .frame(height: 44)
+
+                        if canAddCustomAllergy {
+                            Button(action: addCustomAllergy) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(Color(red: 0.39, green: 0.59, blue: 0.38))
+                            }
+                        }
+                    }
+
+                    // Show hint to add custom allergy
+                    if canAddCustomAllergy {
+                        Text("Tap + to add \"\(allergySearchQuery.trimmingCharacters(in: .whitespacesAndNewlines))\"")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+
+                    // Allergy tags
+                    TagFlowLayout(tags: filteredAllergies, selection: $allergyDetails)
+                        .frame(minHeight: 80)
+
+                    Spacer(minLength: 20)
+
+                    Button {
+                        saveAndContinue()
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                .cornerRadius(12)
+                        } else {
+                            Text("Next")
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .background(Color(red: 0.01, green: 0.33, blue: 0.18))
+                                .cornerRadius(12)
+                        }
+                    }
+                    .disabled(isSaving)
                 }
-                .disabled(isSaving)
             }
-            .sheet(isPresented: $showAllergyDetails) {
-                AllergyDetailModal(selectedTags: $allergyDetails, description: $allergyDescription)
-            }
+        }
+    }
+
+    private func addCustomSymptom() {
+        let trimmed = symptomSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && !allSymptoms.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
+            customSymptoms.append(trimmed)
+            selectedSymptoms.insert(trimmed)
+            symptomSearchQuery = ""
+        }
+    }
+
+    private func addCustomAllergy() {
+        let trimmed = allergySearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allAllergies = commonAllergies + customAllergies
+        if !trimmed.isEmpty && !allAllergies.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
+            customAllergies.append(trimmed)
+            allergyDetails.insert(trimmed)
+            allergySearchQuery = ""
         }
     }
 
@@ -95,18 +186,11 @@ struct SymptomsAllergyInputView: View {
         var parts: [String] = []
 
         if !selectedSymptoms.isEmpty {
-            parts.append("Symptoms: \(selectedSymptoms.joined(separator: ", "))")
+            parts.append("Symptoms: \(selectedSymptoms.sorted().joined(separator: ", "))")
         }
 
-        if let category = selectedAllergyCategory {
-            var allergyPart = "Allergies (\(category))"
-            if !allergyDetails.isEmpty {
-                allergyPart += ": \(allergyDetails.joined(separator: ", "))"
-            }
-            if !allergyDescription.isEmpty {
-                allergyPart += " - \(allergyDescription)"
-            }
-            parts.append(allergyPart)
+        if !allergyDetails.isEmpty {
+            parts.append("Allergies: \(allergyDetails.sorted().joined(separator: ", "))")
         }
 
         let combinedData = parts.joined(separator: "; ")
@@ -174,42 +258,6 @@ struct TagPill: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
-
-struct AllergyDetailModal: View {
-    @Binding var selectedTags: Set<String>
-    @Binding var description: String
-
-    let tags = ["Dairy", "Gluten", "Soy", "Shellfish", "Nuts"]
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Please add additional details\nregarding your food allergy")
-                .font(.headline)
-                .multilineTextAlignment(.center)
-
-            TagFlowLayout(tags: tags, selection: $selectedTags)
-
-            TextEditor(text: $description)
-                .frame(height: 100)
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-
-            Button {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            } label: {
-                Text("Save")
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(Color(red: 0.01, green: 0.33, blue: 0.18))
-                    .cornerRadius(12)
-            }
-        }
-        .padding()
-    }
-}
-
 
 struct FlexibleView<Data: Collection, Content: View>: View where Data.Element: Hashable {
     let data: Data

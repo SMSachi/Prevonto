@@ -77,6 +77,9 @@ struct SelectGenderView: View {
         guard let gender = selectedGender else { return }
         isSaving = true
 
+        // Save to local storage for profile display
+        AuthManager.shared.saveOnboardingGender(gender)
+
         Task {
             do {
                 try await OnboardingAPI.shared.saveGender(gender.lowercased().replacingOccurrences(of: " ", with: "_"))

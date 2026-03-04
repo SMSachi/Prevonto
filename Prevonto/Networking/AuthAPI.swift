@@ -3,7 +3,7 @@ import Foundation
 struct RegisterRequest: Codable {
     let email: String
     let password: String
-    let full_name: String
+    let name: String  // Backend expects "name", not "full_name"
 }
 
 struct LoginRequest: Codable {
@@ -60,7 +60,7 @@ final class AuthAPI {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = RegisterRequest(email: email, password: password, full_name: fullName)
+        let body = RegisterRequest(email: email, password: password, name: fullName)
         request.httpBody = try JSONEncoder().encode(body)
         
         let (data, response) = try await URLSession.shared.data(for: request)
